@@ -1,75 +1,54 @@
 import asyncio
+import logging
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import Command
-from aiogram.types import Message
-import logging
-import os
-from dotenv import load_dotenv
 
 from google import genai
+import motor.motor_asyncio
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+from . import config
+from . import db_manager
+from . import handlers
 
-# --- КОНФИГУРАЦИЯ ---
-load_dotenv() # Загружаем переменные окружения
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") # Секретные ключи из .env
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
-SYSTEM_PROMPT_TEMPLATE = os.getenv("SYSTEM_PROMPT_TEMPLATE")
-
-# TODO: Connect MongoDB Atlas
-# TODO: Get and send data from user
-
-client = None
-
-
-if not all([TOKEN, GEMINI_API_KEY]):
-    logging.critical("ОШИБКА: Не удалось загрузить TELEGRAM_BOT_TOKEN или GEMINI_API_KEY из окружения/файла .env.")
-    exit(1)
-
-
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML)) # type: ignore
+bot = Bot(token=config.TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
+dp.include_router(handlers.dp)
+
+gemini_client = None
 
 def generate_content_sync(client, model_name, contents):
-    """Синхронно вызывает Gemini API."""
+    """Синхронно вызывает Gemini API в отдельном потоке."""
     return client.models.generate_content(
-        model=model_name, 
+        model=model_name,
         contents=contents
     )
 
 
-@dp.message(Command("start"))
-async def start_handler(msg: Message):
-    await msg.answer("# Привет! Я твой ИИ-психолог. Расскажи, что тебя беспокоит 😊")
+async def main():
+    global gemini_client
 
-@dp.message()
-async def echo_handler(msg: Message):
-    user_text = msg.text
-    prompt = SYSTEM_PROMPT_TEMPLATE.format(user_text=user_text) # type: ignore
+    gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
 
     try:
-        response = await asyncio.to_thread(
-            generate_content_sync,
-            client,
-            "gemini-2.5-flash",
-            prompt
+        motor_client = motor.motor_asyncio.AsyncIOMotorClient(
+            config.MONGODB_URI
         )
-        ai_response = response.text
-        await msg.answer(ai_response)
 
+        db_manager.db = motor_client.get_database(config.DB_NAME)
+
+        logging.info("Успешно подключен к MongoDB Atlas.")
     except Exception as e:
-        logging.error(f"Gemini API Error for user {msg.from_user.id}: {e}") # type: ignore
-        await msg.answer("Прости, у меня возникла техническая проблема. Попробуй позже.")
+        logging.critical(f"Ошибка подключения к MongoDB: {e}")
+        exit(1)
 
-
-async def main():
-    global client
-    
-    # Инициализация клиента Gemini
-    client = genai.Client(api_key=GEMINI_API_KEY)
+    dp.workflow_data.update({
+        "gemini_client": gemini_client,
+        "generate_content_sync_func": generate_content_sync,
+    })
 
     logging.info("INNER_TALK_BOT запущен и готов к работе.")
     await dp.start_polling(bot)
