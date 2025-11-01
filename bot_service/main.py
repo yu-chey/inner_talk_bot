@@ -19,6 +19,9 @@ TOKEN = os.getenv("TELEGRAM_BOT_TOKEN") # Секретные ключи из .en
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY") 
 SYSTEM_PROMPT_TEMPLATE = os.getenv("SYSTEM_PROMPT_TEMPLATE")
 
+# TODO: Connect MongoDB Atlas
+# TODO: Get and send data from user
+
 client = None
 
 
@@ -27,7 +30,7 @@ if not all([TOKEN, GEMINI_API_KEY]):
     exit(1)
 
 
-bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML)) # type: ignore
 dp = Dispatcher()
 
 def generate_content_sync(client, model_name, contents):
@@ -45,7 +48,7 @@ async def start_handler(msg: Message):
 @dp.message()
 async def echo_handler(msg: Message):
     user_text = msg.text
-    prompt = SYSTEM_PROMPT_TEMPLATE.format(user_text=user_text)
+    prompt = SYSTEM_PROMPT_TEMPLATE.format(user_text=user_text) # type: ignore
 
     try:
         response = await asyncio.to_thread(
@@ -58,7 +61,7 @@ async def echo_handler(msg: Message):
         await msg.answer(ai_response)
 
     except Exception as e:
-        logging.error(f"Gemini API Error for user {msg.from_user.id}: {e}")
+        logging.error(f"Gemini API Error for user {msg.from_user.id}: {e}") # type: ignore
         await msg.answer("Прости, у меня возникла техническая проблема. Попробуй позже.")
 
 
