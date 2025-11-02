@@ -14,7 +14,7 @@ dp = Router()
 async def start_handler(msg: Message):
     await clear_chat_history(msg.from_user.id)
 
-    initial_bot_response = "Привет! Я твой ИИ-психолог. Расскажи, что тебя беспокоит 😊\n\n_Чтобы начать разговор заново, используй команду /clear._"
+    initial_bot_response = "Привет! Я твой ИИ-психолог. Расскажи, что тебя беспокоит 😊\n\nЧтобы начать разговор заново, используй команду /clear."
 
     await save_message(msg.from_user.id, "system_prompt", SYSTEM_PROMPT_TEXT)
     await save_message(msg.from_user.id, "model", initial_bot_response)
