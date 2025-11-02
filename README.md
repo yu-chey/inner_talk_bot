@@ -54,8 +54,8 @@ GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
 ```
 
 # --- MongoDB Atlas Connection ---
-# Verify your login, password, and IP access in MongoDB Atlas.
 ```env
+# Verify your login, password, and IP access in MongoDB Atlas.
 MONGODB_URI="mongodb+srv://[LOGIN]:[PASSWORD]@[CLUSTER_URI]/[DB_NAME]?retryWrites=true&w=majority"
 DB_NAME="innertalkCluster"
 ```
