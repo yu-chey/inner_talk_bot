@@ -46,21 +46,22 @@ async def chat_handler(
 
     final_contents = []
 
-    system_msg = next((m for m in full_history if m['role'] == 'system_prompt'), None)
+    messages_added_count = 0
 
+    system_msg = next((m for m in full_history if m['role'] == 'system_prompt'), None)
     first_bot_response = next((m for m in full_history if m['role'] == 'model'), None)
 
     if system_msg and first_bot_response:
         final_contents.append({"role": "user", "parts": [{"text": system_msg["text"]}]})
-
         final_contents.append({"role": "model", "parts": [{"text": first_bot_response["text"]}]})
 
-    try:
-        start_index = full_history.index(first_bot_response) + 1
-    except ValueError:
-        start_index = 0
+        messages_added_count = 2
 
-    for message in full_history[start_index:]:
+
+    for i, message in enumerate(full_history):
+        if i < messages_added_count:
+            continue
+
         if message['role'] == 'system_prompt':
             continue
 
