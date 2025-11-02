@@ -38,7 +38,10 @@ source .venv/bin/activate
 ```
 
 ### 2. Установка всех зависимостей
+
+```bash
 pip install -r requirements.txt
+```
 
 ### 3. ⚙️ Конфигурация Переменных Окружения
 
@@ -47,16 +50,22 @@ pip install -r requirements.txt
 Пример .env
 
 # --- Telegram и Gemini API ---
+```
 TELEGRAM_BOT_TOKEN="ВАШ_ТОКЕН_БОТА"
 GEMINI_API_KEY="ВАШ_КЛЮЧ_API_GEMINI"
+```
 
 # --- MongoDB Atlas ---
 # Убедитесь, что логин и пароль корректны!
+```
 MONGODB_URI="mongodb+srv://[ЛОГИН]:[ПАРОЛЬ]@[КЛАСТЕР]/[ИМЯ_БД]?retryWrites=true&w=majority"
-DB_NAME="innertalkCluster"
+DB_NAME="ИМЯ_БАЗЫ_ДАННЫХ"
+```
 
 # --- Системный Промпт Бота ---
+```
 SYSTEM_PROMPT_TEMPLATE="[Вставьте ваш полный текст промпта сюда]"
+```
 
 ### 4. Запуск бота.
 
