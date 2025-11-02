@@ -37,7 +37,7 @@ router.post(
       
       const token = jwt.sign(payload, jwtSecret, { expiresIn: '7d' });
 
-      res.json({ token });
+      res.status(200).json({ token });
     } catch (err) {
       console.error(err);
       res.status(500).send('Server Error');
@@ -57,7 +57,7 @@ router.post('/register', async (req: Request, res: Response) => {
         
         // ВАЖНО: мы сохраняем 'password' в поле 'passwordHash',
         // pre-save хук в модели его автоматически захэширует.
-        admin = new Admin({ email, passwordHash: password });
+        admin = new Admin({ email, password: password });
         await admin.save();
         
         res.status(201).json({ message: "Админ создан" });

@@ -1,31 +1,46 @@
-// src/models/Admin.model.ts
-import mongoose, { Schema, Document } from 'mongoose';
+// src/models/Admin.model.ts (ПРОВЕРЬТЕ КАЖДУЮ СТРОКУ)
+
+import mongoose, { Schema, Document, Model } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+// 1. ИНТЕРФЕЙС ДОКУМЕНТА (использует 'password')
 export interface IAdmin extends Document {
-  email: string;
-  passwordHash: string;
-  comparePassword(password: string): Promise<boolean>;
+    email: string;
+    password: string; 
+    comparePassword(password: string): Promise<boolean>;
 }
 
-const AdminSchema: Schema = new Schema({
-  email: { type: String, required: true, unique: true, lowercase: true },
-  passwordHash: { type: String, required: true },
-});
+// 2. ИНТЕРФЕЙС МОДЕЛИ
+export interface AdminModel extends Model<IAdmin> {} 
 
-// Хешируем пароль перед сохранением
+
+// 3. СХЕМА (использует 'password')
+const AdminSchema = new Schema<IAdmin, AdminModel>({ 
+    email: { type: String, required: true, unique: true },
+    password: { type: String, required: true },
+}, { timestamps: true });
+
+
+// 4. ХУК ХЕШИРОВАНИЯ
 AdminSchema.pre<IAdmin>('save', async function (next) {
-  if (!this.isModified('passwordHash')) {
-    return next();
-  }
-  const salt = await bcrypt.genSalt(10);
-  this.passwordHash = await bcrypt.hash(this.passwordHash, salt);
-  next();
+    if (!this.isModified('password')) { 
+        return next();
+    }
+    try {
+        const salt = await bcrypt.genSalt(10);
+        this.password = await bcrypt.hash(this.password, salt); 
+        next();
+    } catch (err) {
+        next(err as any);
+    }
 });
 
-// Метод для сравнения пароля
+
+// 5. МЕТОД СРАВНЕНИЯ (использует 'this.password')
 AdminSchema.methods.comparePassword = function (password: string): Promise<boolean> {
-  return bcrypt.compare(password, this.passwordHash);
+    return bcrypt.compare(password, this.password);
 };
 
-export const Admin = mongoose.model<IAdmin>('Admin', AdminSchema);
+
+// 6. ЭКСПОРТ
+export const Admin = mongoose.model<IAdmin, AdminModel>('Admin', AdminSchema);
