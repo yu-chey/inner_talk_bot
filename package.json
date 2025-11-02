@@ -6,6 +6,7 @@
     "jsonwebtoken": "^9.0.2",
     "mongodb": "^6.20.0",
     "mongoose": "^8.19.2",
+    "motor": "^0.1.4",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   },
