@@ -47,37 +47,46 @@ inner_talk_bot/ ├── .venv/ # Virtual Environment ├── .env # Environm
 
 Create a file named **`.env`** in the project's root folder. **Ensure this file is ignored by Git!**
 
-```env
 # --- Telegram and Gemini API Credentials ---
+```env
 TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
 GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
+```
 
 # --- MongoDB Atlas Connection ---
 # Verify your login, password, and IP access in MongoDB Atlas.
+```env
 MONGODB_URI="mongodb+srv://[LOGIN]:[PASSWORD]@[CLUSTER_URI]/[DB_NAME]?retryWrites=true&w=majority"
 DB_NAME="innertalkCluster"
+```
 
 # --- Bot's System Prompt (Persona Definition) ---
+```env
 SYSTEM_PROMPT_TEMPLATE="[Paste your complete, carefully refined system prompt text here]"
+```
 
 ▶️ Running the Application
 
 With your virtual environment active, launch the bot module:
-Bash
+```env
 
 (.venv) python -m bot_service.main
 
+```
+
 The console will display confirmation of the MongoDB connection and that the bot is ready for polling.
 
-🛑 Troubleshooting
+## 🛑 Troubleshooting
 
-Issue	Likely Cause	Solution
-Bot replies "I am a large language model..."	The System Prompt is not being sent to Gemini (error in db_manager or handlers).	Verify that db_manager.py uses .sort("timestamp", -1) and that handlers.py uses the message counter logic to build the context correctly.
-"ModuleNotFoundError"	Virtual environment is not active or packages are not installed in the right location.	Activate the environment (source .venv/bin/activate) and run pip install ... again.
-Connection Errors (SSL/MongoDB)	Firewall, VPN, or IP Access List restrictions on MongoDB Atlas.	Whitelist your current public IP address in MongoDB Atlas Network Access settings.
+| Issue | Likely Cause | Solution |
+| :--- | :--- | :--- |
+| **"ModuleNotFoundError"** | Virtual environment is inactive / packages not installed. | Activate environment (`source .venv/bin/activate`) and run `pip install`. |
+| **Bot replies "I am a Google LLM"** | **System prompt is not delivered** (error in `db_manager.py` or `handlers.py`). | **Verify:** 1) `db_manager.py` uses `.sort("timestamp", -1)`. 2) `handlers.py` uses the **message counter logic** for context. |
+| **Mongo connection error** | Incorrect URI, password, or IP not in Atlas access list. | Check URI in `.env` and add your IP address to MongoDB Atlas Network Access. |
+| **"Critical error: SSL..."** | Certificate conflict (VPN, proxy). | Disable VPN/Proxy or update certificates (`pip install --upgrade certifi`). |
 
 👨‍💻 Developers
-
-✨ Yu Chey
-
-✨ Samat Sakenov
+```
+    yu chey
+    Kurosawa
+```
