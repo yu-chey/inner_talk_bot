@@ -15,7 +15,11 @@ connectDB();
 const app = express();
 
 // Middleware
-app.use(cors()); // Разрешаем запросы с других доменов (для фронтенда)
+app.use(cors({
+    origin: 'http://localhost:5173', 
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true,
+}));
 app.use(express.json()); // Разрешаем парсить JSON в теле запроса
 
 // Роуты
@@ -26,7 +30,7 @@ app.get('/', (req, res) => {
   res.send('Admin Panel Service API is running...');
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5173;
 
 app.listen(PORT, () => {
   console.log(`Admin Service запущен на порту ${PORT}`);
