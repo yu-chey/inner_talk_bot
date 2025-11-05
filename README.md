@@ -20,7 +20,12 @@
 
 ### 1. 📂 Project Structure
 
-inner_talk_bot/ ├── .venv/ # Virtual Environment ├── .env # Environment Variables File (MUST BE IN .gitignore!) └── bot_service/ # Core Application Package ├── config.py # Constants and .env loading ├── db_manager.py # MongoDB CRUD operations ├── handlers.py # Message and command handlers └── main.py # Entry point and application launch
+inner_talk_bot/ ├── .venv/ # Virtual Environment 
+                ├── .env # Environment Variables File (MUST BE IN .gitignore!) 
+                └── bot_service/ # Core Application Package ├── config.py # Constants and .env loading 
+                                                            ├── db_manager.py # MongoDB CRUD operations 
+                                                            ├── handlers.py # Message and command handlers 
+                                                            └── main.py # Entry point and application launch
 
 
 ### 2. 🚀 Get Started
