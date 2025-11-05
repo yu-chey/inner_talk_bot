@@ -36,12 +36,12 @@ inner_talk_bot/ ├── .venv/ # Virtual Environment ├── .env # Environm
     python -m venv .venv
     ```
 
-    # For Linux/macOS:
+    For Linux/macOS:
     ```bash
     source .venv/bin/activate
     ```
 
-    # For Windows:
+    For Windows:
     ```bash
     .venv\Scripts\activate
     ```
