@@ -34,11 +34,19 @@ inner_talk_bot/ ├── .venv/ # Virtual Environment ├── .env # Environm
 2.  **Create and activate** the virtual environment:
     ```bash
     python -m venv .venv
-    # For Linux/macOS: source .venv/bin/activate
-    # For Windows: .venv\Scripts\activate
     ```
 
-3.  **Install** dependencies:
+    # For Linux/macOS:
+    ```bash
+    source .venv/bin/activate
+    ```
+
+    # For Windows:
+    ```bash
+    .venv\Scripts\activate
+    ```
+
+4.  **Install** dependencies:
     ```bash
     (.venv) pip install aiogram motor google-genai python-dotenv
     ```
