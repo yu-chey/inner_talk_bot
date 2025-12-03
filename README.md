@@ -101,5 +101,4 @@ The console will display confirmation of the MongoDB connection and that the bot
 👨‍💻 Developers
 ```
     yu chey
-    Kurosawa
 ```
