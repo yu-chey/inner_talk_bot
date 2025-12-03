@@ -1,0 +1,1 @@
+web: python -m bot_service.main
