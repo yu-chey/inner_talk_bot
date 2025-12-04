@@ -77,7 +77,7 @@ async def chat_handler(
         )
         ai_response = response.text
 
-        ai_response = ai_response.replace('*', '').replace('_', '').replace('**', '').replace('__', '')
+        ai_response = ai_response.replace('*', '').replace('**', '').replace('__', '')
         ai_response = ai_response.replace('#', '').strip()
 
         import re
