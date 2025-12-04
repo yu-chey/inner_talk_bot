@@ -68,7 +68,7 @@ async def chat_handler(
         if message['role'] == 'user' or message['role'] == 'model':
             final_contents.append({"role": message["role"], "parts": [{"text": message["text"]}]})
 
-    thinking_message = await msg.answer("⏳ **Думаю над ответом...**")
+    thinking_message = await msg.answer("Думаю над ответом... ⏳")
 
     try:
         await msg.chat.do('typing')
@@ -90,6 +90,8 @@ async def chat_handler(
         await save_message(user_id, "model", ai_response)
 
         await thinking_message.edit_text(ai_response)
+        
+        await msg.chat.do('cancel')
 
     except APIError as e:
         logging.error(f"Gemini API Error for user {user_id}: {e}")
