@@ -28,9 +28,10 @@ async def check_permission(user_id: int):
         {"user_id": user_id}
     )
 
-    if banned_users:
-        return 1
-    return 0
+    if banned_users is None:
+        return 0
+
+    return 1
 
 
 async def get_chat_history(user_id: int):
