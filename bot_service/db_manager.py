@@ -1,5 +1,5 @@
 import datetime
-from .config import CHAT_COLLECTION, HISTORY_LIMIT
+from .config import CHAT_COLLECTION, HISTORY_LIMIT, BAN_COLLECTION
 
 db = None
 
@@ -11,6 +11,22 @@ async def save_message(user_id: int, role: str, text: str):
             "text": text,
             "timestamp": datetime.datetime.now()
         })
+
+async def ban_user(user_id: int, full_name: str):
+    if db is not None:
+        await db[BAN_COLLECTION].insert_one({
+            "user_id": user_id,
+            "full_name": full_name,
+            "timestamp": datetime.datetime.now()
+        })
+
+async def get_banned_users():
+    if db is None:
+        return []
+
+    banned_users = db[BAN_COLLECTION]
+
+    return banned_users
 
 
 async def get_chat_history(user_id: int):
@@ -45,3 +61,10 @@ async def clear_chat_history(user_id: int):
         })
         return result.deleted_count
     return 0
+
+# реализовал, но нигде не применяется
+async def unban_user(user_id: int):
+    if db is not None:
+        await db[BAN_COLLECTION].delete_one({
+            "user_id": user_id
+        })

@@ -19,6 +19,7 @@ dp = Dispatcher()
 dp.include_router(handlers.dp)
 
 gemini_client = None
+revisor_client = None
 
 def generate_content_sync(client, model_name, contents):
     """Синхронно вызывает Gemini API в отдельном потоке."""
@@ -32,6 +33,10 @@ async def main():
     global gemini_client
 
     gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
+
+    global revisor_client
+
+    revisor_client = genai.Client(api_key=config.REVISOR_API_KEY)
 
     try:
         motor_client = motor.motor_asyncio.AsyncIOMotorClient(
@@ -48,6 +53,7 @@ async def main():
     dp.workflow_data.update({
         "gemini_client": gemini_client,
         "generate_content_sync_func": generate_content_sync,
+        "revisor_client": revisor_client
     })
 
     logging.info("INNER_TALK_BOT запущен и готов к работе.")
