@@ -85,7 +85,7 @@ async def chat_handler(
 
         analyze_prompt = ANALYZE_PROMPT_TEXT
 
-        final_contents = analyze_prompt + user_text
+        final_contents = [analyze_prompt, user_text]
 
         verdict = await asyncio.to_thread(
             generate_content_sync_func,
@@ -94,7 +94,7 @@ async def chat_handler(
             final_contents
         )
 
-        if "YES" in verdict.upper():
+        if "YES" in verdict.text.upper():
             await ban_user(user_id, msg.from_user.full_name)
         
     except APIError as e:
