@@ -19,7 +19,6 @@ dp = Dispatcher()
 dp.include_router(handlers.dp)
 
 gemini_client = None
-revisor_client = None
 
 def generate_content_sync(client, model_name, contents):
     """Синхронно вызывает Gemini API в отдельном потоке."""
@@ -48,7 +47,7 @@ async def main():
 
     dp.workflow_data.update({
         "gemini_client": gemini_client,
-        "generate_content_sync_func": generate_content_sync
+        "generate_content_sync_func": generate_content_sync,
     })
 
     logging.info("INNER_TALK_BOT запущен и готов к работе.")
