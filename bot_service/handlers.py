@@ -17,7 +17,6 @@ async def start_handler(msg: Message):
     initial_bot_response = "Привет! Я твой ИИ-психолог. Расскажи, что тебя беспокоит 😊\n\nЧтобы начать разговор заново, используй команду /clear."
 
     await save_message(msg.from_user.id, "system_prompt", SYSTEM_PROMPT_TEXT)
-    await save_message(msg.from_user.id, "model", initial_bot_response)
 
     await msg.answer(initial_bot_response)
 
