@@ -34,10 +34,6 @@ async def main():
 
     gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
 
-    global revisor_client
-
-    revisor_client = genai.Client(api_key=config.REVISOR_API_KEY)
-
     try:
         motor_client = motor.motor_asyncio.AsyncIOMotorClient(
             config.MONGODB_URI
@@ -52,8 +48,7 @@ async def main():
 
     dp.workflow_data.update({
         "gemini_client": gemini_client,
-        "generate_content_sync_func": generate_content_sync,
-        "revisor_client": revisor_client
+        "generate_content_sync_func": generate_content_sync
     })
 
     logging.info("INNER_TALK_BOT запущен и готов к работе.")
