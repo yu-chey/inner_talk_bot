@@ -4,7 +4,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 from google.genai.errors import APIError
-from .config import SYSTEM_PROMPT_TEXT, ANALYZE_PROMPT_TEXT
+from .config import SYSTEM_PROMPT_TEXT, ANALYZE_PROMPT_TEXT, REVISOR_API_KEY
 from .db_manager import save_message, get_chat_history, clear_chat_history, ban_user, check_permission
 
 dp = Router()
@@ -89,9 +89,13 @@ async def chat_handler(
 
         final_contents.extend([analyze_prompt, user_text])
 
+        from google import genai
+
+        revisor_client = genai.Client(api_key=REVISOR_API_KEY)
+
         response = await asyncio.to_thread(
             generate_content_sync_func,
-            gemini_client,
+            revisor_client,
             "gemini-2.5-flash",
             final_contents
         ).text.upper()
