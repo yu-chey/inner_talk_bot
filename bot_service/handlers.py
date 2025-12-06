@@ -4,8 +4,8 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 from google.genai.errors import APIError
-from .config import SYSTEM_PROMPT_TEXT, BAN_LIST
-from .db_manager import save_message, get_chat_history, clear_chat_history
+from .config import SYSTEM_PROMPT_TEXT, ANALYZE_PROMPT_TEXT
+from .db_manager import save_message, get_chat_history, clear_chat_history, ban_user, get_banned_users
 
 dp = Router()
 
@@ -35,7 +35,9 @@ async def chat_handler(
 ):
     user_id = msg.from_user.id
 
-    if user_id in BAN_LIST:
+    ban_users_collection = await get_banned_users()
+
+    if user_id in ban_users_collection:
         await msg.answer("Для тебя бот не работает!")
         return
 
@@ -80,6 +82,20 @@ async def chat_handler(
         await save_message(user_id, "model", ai_response)
 
         await thinking_message.edit_text(ai_response)
+
+        analyze_prompt = ANALYZE_PROMPT_TEXT
+
+        final_contents = analyze_prompt + user_text
+
+        verdict = await asyncio.to_thread(
+            generate_content_sync_func,
+            gemini_client,
+            "gemini-2.5-flash",
+            final_contents
+        )
+
+        if "YES" in verdict.upper():
+            await ban_user(user_id, msg.from_user.full_name)
         
     except APIError as e:
         logging.error(f"Gemini API Error for user {user_id}: {e}")
