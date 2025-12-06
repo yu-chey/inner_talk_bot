@@ -81,12 +81,6 @@ async def chat_handler(
         )
         ai_response = response.text
 
-        ai_response = ai_response.replace('*', '').replace('**', '').replace('__', '')
-        ai_response = ai_response.replace('#', '').strip()
-
-        import re
-        ai_response = re.sub(r'^\s*\d+\.\s*', '', ai_response, flags=re.MULTILINE)
-
         await save_message(user_id, "model", ai_response)
 
         await thinking_message.edit_text(ai_response)
