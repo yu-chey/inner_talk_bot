@@ -39,6 +39,9 @@ async def get_chat_history(user_id: int):
 
 async def clear_chat_history(user_id: int):
     if db is not None:
-        result = await db[CHAT_COLLECTION].delete_many({"user_id": user_id})
+        result = await db[CHAT_COLLECTION].delete_many({
+            "user_id": user_id,
+            "role": {"$ne": "system_prompt"}
+        })
         return result.deleted_count
     return 0
