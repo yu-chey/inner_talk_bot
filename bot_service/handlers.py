@@ -40,32 +40,23 @@ async def chat_handler(
         return
 
     await save_message(user_id, "user", user_text)
-
+    
     full_history = await get_chat_history(user_id)
 
     final_contents = []
-
-    messages_added_count = 0
-
-    system_msg = next((m for m in full_history if m['role'] == 'system_prompt'), None)
-    first_bot_response = next((m for m in full_history if m['role'] == 'model'), None)
-
-    if system_msg and first_bot_response:
+    
+    system_msg = next((m for m in full_history if m.get('role') == 'system_prompt'), None)
+    
+    if system_msg:
         final_contents.append({"role": "user", "parts": [{"text": system_msg["text"]}]})
-        final_contents.append({"role": "model", "parts": [{"text": first_bot_response["text"]}]})
+        final_contents.append({"role": "model", "parts": [{"text": "Я принял свою личность и готов начать диалог."}]})
 
-        messages_added_count = 2
-
-
-    for i, message in enumerate(full_history):
-        if i < messages_added_count:
+    for message in full_history:
+        if message.get('role') == 'system_prompt':
             continue
-
-        if message['role'] == 'system_prompt':
-            continue
-
-        if message['role'] == 'user' or message['role'] == 'model':
-            final_contents.append({"role": message["role"], "parts": [{"text": message["text"]}]})
+        
+        if message.get('role') == 'user' or message.get('role') == 'model':
+             final_contents.append({"role": message["role"], "parts": [{"text": message["text"]}]})
 
     thinking_message = await msg.answer("Думаю над ответом... ⏳")
 
@@ -78,17 +69,18 @@ async def chat_handler(
             "gemini-2.5-flash",
             final_contents
         )
+        
         ai_response = response.text
-
+        
         await save_message(user_id, "model", ai_response)
 
         await thinking_message.edit_text(ai_response)
         
-        await msg.chat.do('cancel')
-
     except APIError as e:
         logging.error(f"Gemini API Error for user {user_id}: {e}")
         await msg.answer("Прости, у меня возникла проблема с ИИ. Попробуй позже.")
     except Exception as e:
         logging.error(f"General Error for user {user_id}: {e}")
         await msg.answer("Прости, у меня возникла техническая проблема. Попробуй позже.")
+    finally:
+        await msg.chat.do('cancel')
