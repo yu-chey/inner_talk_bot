@@ -20,13 +20,17 @@ async def ban_user(user_id: int, full_name: str):
             "timestamp": datetime.datetime.now()
         })
 
-async def get_banned_users():
+async def check_permission(user_id: int):
     if db is None:
-        return []
+        return 0
 
-    banned_users = db[BAN_COLLECTION]
+    banned_users = db[BAN_COLLECTION].find_one(
+        {"user_id": user_id}
+    )
 
-    return banned_users
+    if banned_users:
+        return 1
+    return 0
 
 
 async def get_chat_history(user_id: int):
