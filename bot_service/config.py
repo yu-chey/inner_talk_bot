@@ -16,6 +16,6 @@ BAN_COLLECTION = "banned_users"
 HISTORY_LIMIT = 20
 CHAT_COLLECTION = "chats"
 
-if not all([TOKEN, GEMINI_API_KEY, SYSTEM_PROMPT_TEXT, MONGODB_URI, DB_NAME]):
+if not all([TOKEN, GEMINI_API_KEY, SYSTEM_PROMPT_TEXT, MONGODB_URI, DB_NAME, REVISOR_API_KEY, ANALYZE_PROMPT_TEXT]):
     logging.critical("ОШИБКА: Не удалось загрузить все необходимые ключи. Проверьте файл .env.")
     exit(1)
