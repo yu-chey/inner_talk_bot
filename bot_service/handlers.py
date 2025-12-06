@@ -4,7 +4,7 @@ from aiogram import Router
 from aiogram.filters import Command
 from aiogram.types import Message
 from google.genai.errors import APIError
-from .config import SYSTEM_PROMPT_TEXT
+from .config import SYSTEM_PROMPT_TEXT, BAN_LIST
 from .db_manager import save_message, get_chat_history, clear_chat_history
 
 dp = Router()
@@ -34,6 +34,11 @@ async def chat_handler(
         generate_content_sync_func: callable
 ):
     user_id = msg.from_user.id
+
+    if user_id in BAN_LIST:
+        await msg.answer("Для тебя бот не работает!")
+        return
+
     user_text = msg.text
 
     if not user_text:
