@@ -59,3 +59,20 @@ async def get_user_stats(username: str):
     except Exception as e:
         logger.error(f"Ошибка при получении статистики пользователя {username}: {e}")
         return {"error": f"An internal error occurred: {str(e)}"}, 500
+
+
+async def get_all_users():
+    if users_data_collection is None:
+        return {"error": "Database not initialized"}, 500
+
+    try:
+        unique_usernames = await users_data_collection.distinct("username")
+
+        return {
+            "users": unique_usernames,
+            "count": len(unique_usernames)
+        }, 200
+
+    except Exception as e:
+        logger.error(f"Ошибка при получении списка пользователей: {e}")
+        return {"error": str(e)}, 500

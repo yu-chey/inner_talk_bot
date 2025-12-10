@@ -12,6 +12,9 @@ logger = logging.getLogger(__name__)
 class TotalStats(BaseModel):
     unique_username_count: int = Field(description="Общее число уникальных пользователей по username.")
 
+class UserList(BaseModel):
+    users: list[str] = Field(description="Список уникальных имен пользователей.")
+    count: int = Field(description="Общее количество уникальных пользователей.")
 
 class UserStats(BaseModel):
     username: str
@@ -41,6 +44,18 @@ def shutdown_event():
     if db_stats.mongo_client:
         db_stats.mongo_client.close()
         logger.info("Соединение с MongoDB закрыто.")
+
+
+@app.get("/stats/users", response_model=UserList)
+async def get_all_users_list():
+    """Возвращает список всех уникальных имен пользователей."""
+
+    stats, status_code = await db_stats.get_all_users()
+
+    if status_code != 200:
+        raise HTTPException(status_code=status_code, detail=stats.get("error", "Failed to retrieve user list."))
+
+    return stats
 
 
 @app.get("/stats/total", response_model=TotalStats)
