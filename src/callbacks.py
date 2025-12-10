@@ -7,13 +7,12 @@ from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from google.genai import types
 from aiogram.types import CallbackQuery, InputMediaPhoto, Message
-from keyboards import main_menu, about_us_menu, end_session_menu, back_to_menu_keyboard, support_menu
-from photos import main_photo, about_us_photo, portrait_photo
-from texts import MAIN_MENU_CAPTION, ABOUT_US_CAPTION, SUPPORT_CAPTION
+from . import keyboards
+from . import photos
+from . import texts
 from aiogram.enums import ParseMode
-
-import config
-from states import SessionStates
+from . import states
+from . import config
 
 logger = logging.getLogger(__name__)
 
@@ -213,22 +212,22 @@ async def menu_handler(callback: CallbackQuery, state: FSMContext) -> None:
             'loading_message_id') == callback.message.message_id:
         await state.update_data(portrait_loading=False, loading_message_id=None)
 
-    caption_text = MAIN_MENU_CAPTION
+    caption_text = texts.MAIN_MENU_CAPTION
 
     try:
         new_media = InputMediaPhoto(
-            media=main_photo,
+            media=photos.main_photo,
             caption=caption_text,
             parse_mode=ParseMode.MARKDOWN
         )
         await callback.message.edit_media(
             media=new_media,
-            reply_markup=main_menu
+            reply_markup=keyboards.main_menu
         )
     except TelegramBadRequest:
         await callback.message.edit_caption(
             caption=caption_text,
-            reply_markup=main_menu,
+            reply_markup=keyboards.main_menu,
             parse_mode=ParseMode.MARKDOWN
         )
 
@@ -237,9 +236,9 @@ async def menu_handler(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data == "about_us")
 async def about_us_handler(callback: CallbackQuery) -> None:
-    caption_text = ABOUT_US_CAPTION
+    caption_text = texts.ABOUT_US_CAPTION
     new_media = InputMediaPhoto(
-        media=about_us_photo,
+        media=photos.about_us_photo,
         caption=caption_text,
         parse_mode=ParseMode.MARKDOWN
     )
@@ -247,12 +246,12 @@ async def about_us_handler(callback: CallbackQuery) -> None:
     try:
         await callback.message.edit_media(
             media=new_media,
-            reply_markup=about_us_menu
+            reply_markup=keyboards.about_us_menu
         )
     except TelegramBadRequest:
         await callback.message.edit_caption(
             caption=caption_text,
-            reply_markup=about_us_menu,
+            reply_markup=keyboards.about_us_menu,
             parse_mode=ParseMode.MARKDOWN
         )
 
@@ -317,20 +316,20 @@ async def start_session_handler(callback: CallbackQuery, state: FSMContext, user
     try:
         await callback.message.edit_caption(
             caption=start_caption,
-            reply_markup=end_session_menu,
+            reply_markup=keyboards.end_session_menu,
             parse_mode=ParseMode.MARKDOWN
         )
     except TelegramBadRequest:
-        await callback.message.answer(start_caption, reply_markup=end_session_menu, parse_mode=ParseMode.MARKDOWN)
+        await callback.message.answer(start_caption, reply_markup=keyboards.end_session_menu, parse_mode=ParseMode.MARKDOWN)
 
-    await state.set_state(SessionStates.in_session)
+    await state.set_state(states.SessionStates.in_session)
     await state.update_data(
         last_ai_message_id=callback.message.message_id,
         real_user_message_count=0
     )
 
 
-@router.callback_query(F.data == "end_session", StateFilter(SessionStates.in_session))
+@router.callback_query(F.data == "end_session", StateFilter(states.SessionStates.in_session))
 async def end_session_handler(callback: CallbackQuery, state: FSMContext, users_collection, generate_content_sync_func,
                               gemini_client) -> None:
     data = await state.get_data()
@@ -358,14 +357,14 @@ async def end_session_handler(callback: CallbackQuery, state: FSMContext, users_
         except TelegramBadRequest:
             pass
 
-        await state.set_state(SessionStates.idle)
+        await state.set_state(states.SessionStates.idle)
         await state.set_data({})
 
-        caption_text = MAIN_MENU_CAPTION
+        caption_text = texts.MAIN_MENU_CAPTION
         await callback.message.answer_photo(
-            photo=main_photo,
+            photo=photos.main_photo,
             caption=caption_text,
-            reply_markup=main_menu,
+            reply_markup=keyboards.main_menu,
             parse_mode=ParseMode.MARKDOWN
         )
 
@@ -399,15 +398,15 @@ async def end_session_handler(callback: CallbackQuery, state: FSMContext, users_
     except TelegramBadRequest:
         await callback.message.answer(text=final_text, parse_mode=ParseMode.MARKDOWN)
 
-    await state.set_state(SessionStates.idle)
+    await state.set_state(states.SessionStates.idle)
     await state.set_data({})
 
-    caption_text = MAIN_MENU_CAPTION
+    caption_text = texts.MAIN_MENU_CAPTION
 
     await callback.message.answer_photo(
-        photo=main_photo,
+        photo=photos.main_photo,
         caption=caption_text,
-        reply_markup=main_menu,
+        reply_markup=keyboards.main_menu,
         parse_mode=ParseMode.MARKDOWN
     )
 
@@ -453,7 +452,7 @@ async def get_portrait_handler(callback: CallbackQuery, users_collection, genera
 
     initial_caption = "⏳ **Начинаю анализ...**"
     new_media = InputMediaPhoto(
-        media=portrait_photo,
+        media=photos.portrait_photo,
         caption=initial_caption,
         parse_mode=ParseMode.MARKDOWN
     )
@@ -461,12 +460,12 @@ async def get_portrait_handler(callback: CallbackQuery, users_collection, genera
     try:
         message_to_edit = await callback.message.edit_media(
             media=new_media,
-            reply_markup=back_to_menu_keyboard
+            reply_markup=keyboards.back_to_menu_keyboard
         )
     except TelegramBadRequest:
         message_to_edit = await callback.message.edit_caption(
             caption=initial_caption,
-            reply_markup=back_to_menu_keyboard,
+            reply_markup=keyboards.back_to_menu_keyboard,
             parse_mode=ParseMode.MARKDOWN
         )
 
@@ -534,25 +533,25 @@ async def get_portrait_handler(callback: CallbackQuery, users_collection, genera
     try:
         await message_to_edit.edit_caption(
             caption=final_caption,
-            reply_markup=back_to_menu_keyboard,
+            reply_markup=keyboards.back_to_menu_keyboard,
             parse_mode=ParseMode.MARKDOWN
         )
     except TelegramBadRequest as e:
         logger.error(f"Failed to edit final caption after portrait generation: {e}")
         await callback.message.answer_photo(
-            photo=portrait_photo,
+            photo=photos.portrait_photo,
             caption=final_caption,
-            reply_markup=back_to_menu_keyboard,
+            reply_markup=keyboards.back_to_menu_keyboard,
             parse_mode=ParseMode.MARKDOWN
         )
 
 
 @router.callback_query(F.data == "call_support")
 async def call_support_handler(callback: CallbackQuery) -> None:
-    caption_text = SUPPORT_CAPTION
+    caption_text = texts.SUPPORT_CAPTION
 
     new_media = InputMediaPhoto(
-        media=main_photo,
+        media=photos.main_photo,
         caption=caption_text,
         parse_mode=ParseMode.MARKDOWN
     )
@@ -560,12 +559,12 @@ async def call_support_handler(callback: CallbackQuery) -> None:
     try:
         await callback.message.edit_media(
             media=new_media,
-            reply_markup=support_menu
+            reply_markup=keyboards.support_menu
         )
     except TelegramBadRequest:
         await callback.message.edit_caption(
             caption=caption_text,
-            reply_markup=support_menu,
+            reply_markup=keyboards.support_menu,
             parse_mode=ParseMode.MARKDOWN
         )
 

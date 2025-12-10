@@ -2,9 +2,9 @@ import asyncio
 import sys
 import logging
 import motor.motor_asyncio
-import config
-import callbacks
-import handlers
+from . import config
+from . import handlers
+from . import callbacks
 
 from google import genai
 from google.genai import types

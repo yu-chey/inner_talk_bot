@@ -5,14 +5,14 @@ from aiogram.exceptions import TelegramBadRequest
 from aiogram import Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
-import config
+from . import config
+from . import keyboards
+from . import photos
+from . import texts
+from . import states
 from google.genai import types
-from states import SessionStates
 from aiogram.types import Message
-from keyboards import main_menu, end_session_menu
-from texts import MAIN_MENU_CAPTION
-from aiogram.enums import ParseMode, ChatAction
-from photos import main_photo
+from aiogram.enums import ParseMode
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +43,7 @@ async def _save_to_db_async(collection, data):
 
 @router.message(Command("start"))
 async def start_handler(message: Message, state: FSMContext, users_collection) -> None:
-    await state.set_state(SessionStates.idle)
+    await state.set_state(states.SessionStates.idle)
 
     user = message.from_user
     asyncio.create_task(_save_user_profile_async(
@@ -53,11 +53,11 @@ async def start_handler(message: Message, state: FSMContext, users_collection) -
         user.first_name
     ))
 
-    caption_text = MAIN_MENU_CAPTION
+    caption_text = texts.MAIN_MENU_CAPTION
     await message.answer_photo(
-        photo=main_photo,
+        photo=photos.main_photo,
         caption=caption_text,
-        reply_markup=main_menu,
+        reply_markup=keyboards.main_menu,
         parse_mode=ParseMode.MARKDOWN)
 
 
@@ -94,7 +94,7 @@ async def update_thinking_message(bot, chat_id: int, message_id: int, stop_event
     except Exception as e:
         logger.error(f"Error in update_thinking_message: {e}")
 
-@router.message(StateFilter(SessionStates.in_session))
+@router.message(StateFilter(states.SessionStates.in_session))
 async def echo_handler(message: Message, state: FSMContext, generate_content_sync_func, users_collection, bot,
                        gemini_client, count_tokens_sync_func) -> None:
     user_text = message.text
@@ -165,7 +165,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
             f"🕰️ **Лимит сессии:** Общий объем диалога ({total_token_count} токенов) "
             f"достиг максимума (~{config.MAX_TOKENS_PER_SESSION} токенов). \n"
             f"Для завершения и сохранения конспекта, пожалуйста, нажмите **'Закончить сессию'**.",
-            reply_markup=end_session_menu,
+            reply_markup=keyboards.end_session_menu,
             parse_mode=ParseMode.MARKDOWN
         )
         return
@@ -209,14 +209,14 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
     try:
         await thinking_message.edit_text(
             text=ai_response,
-            reply_markup=end_session_menu,
+            reply_markup=keyboards.end_session_menu,
             parse_mode=ParseMode.MARKDOWN
         )
     except TelegramBadRequest as e:
         logger.warning(f"Failed to edit thinking message: {e}")
         final_message = await message.answer(
             ai_response,
-            reply_markup=end_session_menu,
+            reply_markup=keyboards.end_session_menu,
             parse_mode=ParseMode.MARKDOWN
         )
 
