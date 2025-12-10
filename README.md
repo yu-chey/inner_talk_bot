@@ -2,103 +2,86 @@
 
 ## 🌟 Project Overview
 
-**Inner Talk Bot** is an empathetic, high-performance Telegram application designed to serve as a **first line of accessible psychological support**. Built on Python using the **aiogram** framework and the **Google Gemini** model, it offers anonymous, context-aware assistance. The bot strictly adheres to a therapeutic system prompt, providing practical CBT-based advice and emotional support while storing chat history securely in **MongoDB Atlas** for consistent, long-term dialogue continuity.
+**Inner Talk Bot** — это эмпатичное, высокопроизводительное Telegram-приложение, разработанное как **первая линия доступной психологической поддержки**. Оно построено на Python с использованием асинхронного фреймворка **aiogram** и модели **Google Gemini**, предоставляя анонимную, контекстно-зависимую помощь. Бот строго придерживается терапевтической системной инструкции, предоставляя практические советы, основанные на принципах **КПТ (CBT)**, и эмоциональную поддержку. История чатов безопасно хранится в **MongoDB Atlas** для обеспечения долгосрочной последовательности диалога и сохранения конспектов сессий.
 
-### ✨ Key Features
+### ✨ Ключевые функции
 
-| Feature | Description |
+| Функция | Описание |
 | :--- | :--- |
-| **Strict Persona** | The bot strictly follows its system prompt, acting as a supporting AI specialist, and is **forbidden** from redirecting users to external professionals. |
-| **Deep Context** | Maintains chat history up to **30 messages** to ensure sequence and relevance during therapeutic interaction. |
-| **Asynchronous Core** | Built on `aiogram` and `motor` for maximum performance and responsiveness. |
-| **Data Persistence** | Uses **MongoDB Atlas** for reliable storage of chat history. |
-| **Reset Command** | The `/clear` command allows users to instantly reset and start a new session. |
+| **Строгий AI-Психолог** | Бот строго следует системной инструкции, выступая как поддерживающий AI-специалист, **запрещено** перенаправлять пользователей к внешним профессионалам. |
+| **Психологический Портрет** | Генерация подробного анализа психологического портрета пользователя на основе истории сообщений. **Введен кулдаун** для контроля лимитов. |
+| **Конспекты Сессий** | В конце каждой сессии автоматически создается краткий конспект диалога и сохраняется в DB для **восстановления контекста** в будущем. |
+| **Глубокий Контекст** | Поддерживает историю диалога и использует **конспекты предыдущих сессий** для непрерывности. |
+| **Асинхронное Ядро** | Использует `aiogram` и `motor` для максимальной производительности, что критично для быстрых ответов Gemini. |
+| **Лимиты Пользователей** | Контроль лимитов сессий **на день** и кулдаун на генерацию портрета. |
 
 ---
 
-## 🛠️ Installation and Setup
+## 🛠️ Установка и Настройка
 
-### 1. 📂 Project Structure
+### 1. 📂 Структура проекта
 
-inner_talk_bot/ ├── .venv/ # Virtual Environment 
-                ├── .env # Environment Variables File (MUST BE IN .gitignore!) 
-                └── bot_service/ # Core Application Package ├── config.py # Constants and .env loading 
-                                                            ├── db_manager.py # MongoDB CRUD operations 
-                                                            ├── handlers.py # Message and command handlers 
-                                                            └── main.py # Entry point and application launch
+inner_talk_bot/ ├── .venv/ # Виртуальное окружение ├── .env # Файл переменных окружения (ОБЯЗАТЕЛЬНО должен быть в .gitignore!) ├── .gitignore # Файл игнорирования (включает .env, pycache, .idea) └── bot_service/ # Основной пакет приложения ├── config.py # Константы и загрузка .env ├── db_manager.py # Операции CRUD для MongoDB ├── handlers.py # Обработчики сообщений и команд ├── callbacks.py # Обработчики кнопок (меню, сессии, портрет) ├── keyboards.py # Клавиатуры и Inline-кнопки └── main.py # Точка входа и запуск приложения
 
 
-### 2. 🚀 Get Started
+### 2. 🚀 Начало работы
 
-1.  **Clone** the repository and navigate to the project folder:
+1.  **Клонируйте** репозиторий и перейдите в папку проекта:
     ```bash
     git clone [YOUR REPOSITORY LINK]
     cd inner_talk_bot
     ```
 
-2.  **Create and activate** the virtual environment:
+2.  **Создайте и активируйте** виртуальное окружение:
     ```bash
     python -m venv .venv
     ```
 
-    For Linux/macOS:
+    Для Linux/macOS:
     ```bash
     source .venv/bin/activate
     ```
 
-    For Windows:
+    Для Windows:
     ```bash
     .venv\Scripts\activate
     ```
 
-4.  **Install** dependencies:
+3.  **Установите** зависимости:
     ```bash
     (.venv) pip install aiogram motor google-genai python-dotenv
     ```
 
-### 3. 🔑 Environment Configuration (`.env`)
+### 3. 🔑 Конфигурация окружения (`.env`)
 
-Create a file named **`.env`** in the project's root folder. **Ensure this file is ignored by Git!**
+Создайте файл с именем **`.env`** в корневой папке проекта. **Этот файл должен быть в `.gitignore`!**
 
-# --- Telegram and Gemini API Credentials ---
 ```env
+# --- Telegram и Gemini API ---
 TELEGRAM_BOT_TOKEN="YOUR_TELEGRAM_BOT_TOKEN"
 GEMINI_API_KEY="YOUR_GEMINI_API_KEY"
-```
 
-# --- MongoDB Atlas Connection ---
-```env
-# Verify your login, password, and IP access in MongoDB Atlas.
+# --- MongoDB Atlas ---
 MONGODB_URI="mongodb+srv://[LOGIN]:[PASSWORD]@[CLUSTER_URI]/[DB_NAME]?retryWrites=true&w=majority"
 DB_NAME="innertalkCluster"
+
+# --- Настройки лимитов и режима работы ---
+MAX_TOKENS_PER_SESSION=3000
+MAX_SESSIONS_PER_DAY=3
+PORTRAIT_COOLDOWN_HOURS=24
+
+# --- Системная инструкция (Определение Персоны) ---
+SYSTEM_PROMPT_TEMPLATE="[Вставьте ваш полный, тщательно проработанный системный промпт здесь]"
 ```
 
-# --- Bot's System Prompt (Persona Definition) ---
-```env
-SYSTEM_PROMPT_TEMPLATE="[Paste your complete, carefully refined system prompt text here]"
-```
+▶️ Запуск приложения
 
-▶️ Running the Application
-
-With your virtual environment active, launch the bot module:
-```env
+С активным виртуальным окружением, запустите основной модуль бота:
+```Bash
 
 (.venv) python -m bot_service.main
-
 ```
 
-The console will display confirmation of the MongoDB connection and that the bot is ready for polling.
+👨‍💻 Разработчики
 
-## 🛑 Troubleshooting
-
-| Issue | Likely Cause | Solution |
-| :--- | :--- | :--- |
-| **"ModuleNotFoundError"** | Virtual environment is inactive / packages not installed. | Activate environment (`source .venv/bin/activate`) and run `pip install`. |
-| **Bot replies "I am a Google LLM"** | **System prompt is not delivered** (error in `db_manager.py` or `handlers.py`). | **Verify:** 1) `db_manager.py` uses `.sort("timestamp", -1)`. 2) `handlers.py` uses the **message counter logic** for context. |
-| **Mongo connection error** | Incorrect URI, password, or IP not in Atlas access list. | Check URI in `.env` and add your IP address to MongoDB Atlas Network Access. |
-| **"Critical error: SSL..."** | Certificate conflict (VPN, proxy). | Disable VPN/Proxy or update certificates (`pip install --upgrade certifi`). |
-
-👨‍💻 Developers
-```
     yu chey
-```
