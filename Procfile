@@ -1,1 +1,1 @@
-web: python -m bot_service.main
+web: python -m src.main
