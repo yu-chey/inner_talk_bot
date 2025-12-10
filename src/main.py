@@ -2,9 +2,9 @@ import asyncio
 import sys
 import logging
 import motor.motor_asyncio
-from . import config
-from . import handlers
-from . import callbacks
+from src import config
+from src.handlers import router as handler_router
+from src.callbacks import router as callback_router
 
 from google import genai
 from google.genai import types
@@ -61,7 +61,7 @@ async def main():
 
     dp = Dispatcher()
 
-    dp.include_routers(handlers.router, callbacks.router)
+    dp.include_routers(handler_router, callback_router)
 
     bot = Bot(token=config.TELEGRAM_TOKEN, default=DefaultBotProperties(parse_mode=None))
 
@@ -85,8 +85,6 @@ async def main():
 
 if __name__ == '__main__':
     try:
-        import motor.motor_asyncio
-
         asyncio.run(main())
     except KeyboardInterrupt:
         logging.info("Бот остановлен вручную.")

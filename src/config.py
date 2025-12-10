@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_TOKEN") or sys.exit(1)
+TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN") or sys.exit(1)
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or sys.exit(1)
 
 MONGODB_URI: str = os.getenv("MONGODB_URI") or sys.exit(1)
