@@ -1,0 +1,56 @@
+from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+
+main_menu = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text='🎉 Начать разговор', callback_data='start_session')
+        ],
+        [
+            InlineKeyboardButton(text='🧠 Анализ личности', callback_data='get_portrait'),
+            InlineKeyboardButton(text='ℹ️ О нас', callback_data='about_us')
+        ],
+        [
+            InlineKeyboardButton(text='📧 Тех. поддержка', callback_data='call_support')
+        ]
+    ])
+
+about_us_menu = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text="👨‍💻 Разработчик", url="https://t.me/yu_chey"),
+            InlineKeyboardButton(text="👑 Владелец", url="https://t.me/zhanrin"),
+            InlineKeyboardButton(text="📢 SMM", url="https://t.me/dikosua")
+        ],
+        # [
+        #     InlineKeyboardButton(text="📸 Instagram", url="https://www.instagram.com/inn.tlk"),
+        #     InlineKeyboardButton(text="🎶 TikTok", url="https://www.tiktok.com/@lnn.tlk")
+        # ],
+        [
+            InlineKeyboardButton(text="🌐 Наш сайт", url="https://innertalk.tilda.ws/"),
+            InlineKeyboardButton(text="📣 Наш канал", url="https://t.me/InnerTalk_official")
+        ],
+        [
+            InlineKeyboardButton(text="⬅️ Вернуться назад", callback_data="main_menu")
+        ]
+    ])
+
+end_session_menu = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text='🛑 Закончить разговор', callback_data="end_session")
+        ]
+    ])
+
+back_to_menu_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="main_menu")
+        ]
+    ])
+
+support_menu = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="main_menu")
+        ]
+    ])
