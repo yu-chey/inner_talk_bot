@@ -1,0 +1,15 @@
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyd
+*.so
+
+# IDE settings (PyCharm / IntelliJ)
+.idea/
+
+# Other common temporary files
+.vscode/
+venv/
+*.log
+
+.env
