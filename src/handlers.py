@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from aiogram.exceptions import TelegramBadRequest
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from . import config
@@ -94,6 +94,13 @@ async def update_thinking_message(bot, chat_id: int, message_id: int, stop_event
     except Exception as e:
         logger.error(f"Error in update_thinking_message: {e}")
 
+@router.message(F.content_type != "text", StateFilter(states.SessionStates.in_session))
+async def non_text_in_session_handler(message: Message) -> None:
+    await message.answer(
+        "🚫 **Ошибка:** Я — текстовый ИИ-психолог и могу обрабатывать **только текстовые сообщения**.",
+        parse_mode=ParseMode.MARKDOWN
+    )
+
 @router.message(StateFilter(states.SessionStates.in_session))
 async def echo_handler(message: Message, state: FSMContext, generate_content_sync_func, users_collection, bot,
                        gemini_client, count_tokens_sync_func) -> None:
@@ -107,6 +114,40 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         return
 
     current_data = await state.get_data()
+    ai_style = current_data.get("ai_style", "default")
+    real_user_message_count = current_data.get("real_user_message_count", 0) + 1
+
+    is_miracle_asked = current_data.get('miracle_question_asked', False)
+    is_scaling_asked = current_data.get('scaling_question_asked', False)
+
+    if real_user_message_count == 2 and not is_miracle_asked:
+        logger.info(f"User {user_id} reached 2 messages. Initiating Miracle Question.")
+        await state.update_data(initiate_miracle_question=True, miracle_question_asked=True)
+
+    elif real_user_message_count == 5 and not is_miracle_asked and not is_scaling_asked:
+        logger.info(f"User {user_id} reached 5 messages. Initiating Scaling Question.")
+        await state.update_data(initiate_scaling_question=True, scaling_question_asked=True)
+
+    else:
+        if current_data.get('initiate_miracle_question'):
+            await state.update_data(initiate_miracle_question=False)
+        if current_data.get('initiate_scaling_question'):
+            await state.update_data(initiate_scaling_question=False)
+
+    style_modifier = ""
+    if ai_style == "empathy":
+        style_modifier = (
+            "ТВОЙ ПРИОРИТЕТ: Сейчас ты должен быть максимально эмпатичным и поддерживающим. "
+            "Фокусируйся на валидации чувств пользователя, покажи, что ты слышишь его боль. "
+            "Уменьши количество прямых вопросов, увеличь количество фраз сочувствия."
+        )
+    elif ai_style == "action":
+        style_modifier = (
+            "ТВОЙ ПРИОРИТЕТ: Ты должен быть максимально практичным и ориентированным на действия. "
+            "Избегай лишних фраз сочувствия. Сразу предлагай конкретные шаги, формулируй задачи "
+            "и фокусируйся на плане действий. В выводах '3-2-1' делай упор на '1️⃣ Действие'."
+        )
+
     history = current_data.get("current_dialog", [])
     last_ai_message_id = current_data.get('last_ai_message_id')
 
@@ -131,10 +172,26 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
     user_message_content_dict = {"role": "user", "content": user_text}
     dialog_messages_only.append(user_message_content_dict)
 
-    final_system_prompt = config.SYSTEM_PROMPT_TEXT
+    updated_data = await state.get_data()
+
+    miracle_prompt_modifier = ""
+    if updated_data.get('initiate_miracle_question'):
+        miracle_prompt_modifier = "FSMContext содержит ключ 'initiate_miracle_question'. Немедленно выполни УПРАЖНЕНИЕ: Вопрос о Чуде, строго по инструкции 5."
+
+    scaling_prompt_modifier = ""
+    if updated_data.get('initiate_scaling_question'):
+        scaling_prompt_modifier = "FSMContext содержит ключ 'initiate_scaling_question'. Немедленно выполни УПРАЖНЕНИЕ: Шкала Компетентности, строго по инструкции 6."
+
+    full_modifier = f"{style_modifier}\n\n{miracle_prompt_modifier}\n\n{scaling_prompt_modifier}"
+
+    base_prompt_with_style = f"{config.SYSTEM_PROMPT_TEXT}\n\n{full_modifier}"
+
     if is_summary_present and summary_content_dict:
-        final_system_prompt = f"{summary_content_dict['content']}\n\n{config.SYSTEM_PROMPT_TEXT}"
-        logger.info("Конспект добавлен в системную инструкцию для Gemini.")
+        final_system_prompt = f"{summary_content_dict['content']}\n\n{base_prompt_with_style}"
+        logger.info("Конспект и Акцент добавлены в системную инструкцию для Gemini.")
+    else:
+        final_system_prompt = base_prompt_with_style
+        logger.info(f"Используется Акцент: {ai_style}")
 
     new_contents_gemini = [
         types.Content(
@@ -252,3 +309,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         last_ai_message_id=final_message.message_id,
         real_user_message_count=real_user_message_count
     )
+
+@router.message(F.content_type != "text")
+async def non_text_idle_handler(message: Message) -> None:
+    print(message.photo[-1].file_id)

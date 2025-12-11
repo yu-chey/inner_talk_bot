@@ -13,6 +13,7 @@ from . import texts
 from aiogram.enums import ParseMode
 from . import states
 from . import config
+from .handlers import _save_to_db_async
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,39 @@ async def update_portrait_caption_animation(bot, chat_id: int, message_id: int, 
         pass
     except Exception as e:
         logger.error(f"Error in update_portrait_caption_animation: {e}")
+
+async def update_stats_caption_animation(bot, chat_id: int, message_id: int, stop_event: asyncio.Event):
+    animation_texts = [
+        "**📊 Собираю** все оценки прогресса...",
+        "**🧠 Вычисляю** средний балл...",
+        "**📈 Анализирую** тенденции за последний месяц...",
+        "**💡 Формулирую** финальные выводы..."
+    ]
+    delay = 1.0
+
+    try:
+        while not stop_event.is_set():
+            for text_frame in animation_texts:
+                if stop_event.is_set():
+                    break
+
+                try:
+                    await bot.edit_message_caption(
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        caption=text_frame,
+                        parse_mode=ParseMode.MARKDOWN
+                    )
+                except TelegramBadRequest as e:
+                    if "message is not modified" not in str(e):
+                        return
+
+                await asyncio.sleep(delay)
+
+    except asyncio.CancelledError:
+        pass
+    except Exception as e:
+        logger.error(f"Error in update_stats_caption_animation: {e}")
 
 
 async def _generate_portrait_async(user_id, users_collection, generate_content_sync_func, gemini_client):
@@ -206,6 +240,8 @@ async def _load_session_history(user_id, users_collection, state: FSMContext):
 
 @router.callback_query(F.data == "main_menu")
 async def menu_handler(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(states.SessionStates.idle)
+
     current_data = await state.get_data()
 
     if current_data.get('portrait_loading') is True and current_data.get(
@@ -398,8 +434,11 @@ async def end_session_handler(callback: CallbackQuery, state: FSMContext, users_
     except TelegramBadRequest:
         await callback.message.answer(text=final_text, parse_mode=ParseMode.MARKDOWN)
 
+    data = await state.get_data()
+    saved_style = data.get("ai_style", "default")
+
     await state.set_state(states.SessionStates.idle)
-    await state.set_data({})
+    await state.set_data({"ai_style": saved_style})
 
     caption_text = texts.MAIN_MENU_CAPTION
 
@@ -551,7 +590,7 @@ async def call_support_handler(callback: CallbackQuery) -> None:
     caption_text = texts.SUPPORT_CAPTION
 
     new_media = InputMediaPhoto(
-        media=photos.main_photo,
+        media=photos.support_photo,
         caption=caption_text,
         parse_mode=ParseMode.MARKDOWN
     )
@@ -569,3 +608,307 @@ async def call_support_handler(callback: CallbackQuery) -> None:
         )
 
     await callback.answer()
+
+
+@router.callback_query(F.data == "start_progress_scale", StateFilter(states.SessionStates.idle, None))
+async def start_progress_scale_handler(callback: CallbackQuery, state: FSMContext, users_collection) -> None:
+    user_id = callback.from_user.id
+    current_time = datetime.now(timezone.utc)
+
+    last_score_doc = await users_collection.find_one(
+        {"user_id": user_id, "type": "progress_score"},
+        sort=[("timestamp", -1)]
+    )
+
+    if last_score_doc and 'timestamp' in last_score_doc:
+        last_score_time = last_score_doc['timestamp'].replace(tzinfo=timezone.utc)
+
+        cooldown_end_time = last_score_time + timedelta(hours=config.PROGRESS_SCORE_COOLDOWN_HOURS)
+
+        if current_time < cooldown_end_time:
+            time_left = cooldown_end_time - current_time
+            hours, remainder = divmod(int(time_left.total_seconds()), 3600)
+            minutes, _ = divmod(remainder, 60)
+
+            await callback.answer(
+                f"⚠️ Вы можете оценить свое состояние не чаще, чем раз в {config.PROGRESS_SCORE_COOLDOWN_HOURS} часа. "
+                f"Повторная попытка будет доступна через {hours} ч. {minutes} мин.",
+                show_alert=True
+            )
+            return
+
+    await state.set_state(states.MoodStates.waiting_for_score)
+
+    caption_text = (
+        "📈 **Шкала Прогресса**\n\n"
+        "Как вы оцениваете свое текущее состояние или прогресс в решении проблемы?\n\n"
+        "По шкале от 1 до 10 👨🏼‍⚕️"
+    )
+
+    new_media = InputMediaPhoto(
+        media=photos.main_photo,
+        caption=caption_text,
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    try:
+        await callback.message.edit_media(
+            media=new_media,
+            reply_markup=keyboards.progress_scale_menu
+        )
+    except TelegramBadRequest as e:
+        await callback.message.edit_caption(
+            caption=caption_text,
+            reply_markup=keyboards.progress_scale_menu,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        logger.warning(f"Failed to edit media for scale, used edit_caption: {e}")
+
+    await callback.answer("Выберите оценку...")
+
+
+@router.callback_query(F.data.startswith("set_score:"))
+async def set_score_handler(callback: CallbackQuery, state: FSMContext, users_collection) -> None:
+    if await state.get_state() != states.MoodStates.waiting_for_score:
+        await callback.answer("Ошибка: Опрос не был начат корректно.")
+        return
+
+    score = int(callback.data.split(":")[1])
+    user_id = callback.from_user.id
+    current_time = datetime.now(timezone.utc)
+
+    asyncio.create_task(_save_to_db_async(users_collection, {
+        "user_id": user_id,
+        "type": "progress_score",
+        "score": score,
+        "timestamp": current_time,
+    }))
+
+    filled = "🟢" * score
+    empty = "⚪" * (10 - score)
+    progress_bar = f"{filled}{empty}"
+
+    final_caption = (
+        f"✅ **Отлично! Ваша оценка сохранена.**\n\n"
+        f"Текущий прогресс: **{progress_bar}** ({score}/10)\n\n"
+        "Чем чаще вы оцениваете прогресс, тем лучше видите свой путь. Нажмите кнопку, чтобы вернуться к основным функциям."
+    )
+
+    try:
+        await callback.message.edit_caption(
+            caption=final_caption,
+            reply_markup=keyboards.back_to_menu_keyboard,
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except TelegramBadRequest as e:
+        logger.error(f"Failed to edit caption after score: {e}")
+        await callback.message.answer(
+            text=final_caption,
+            reply_markup=keyboards.back_to_menu_keyboard,
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+    await state.set_state(states.SessionStates.idle)
+
+    await callback.answer()
+
+
+@router.callback_query(F.data == "start_style_selection", StateFilter(states.SessionStates.idle, None))
+async def start_style_selection_handler(callback: CallbackQuery, state: FSMContext) -> None:
+    caption_text = (
+        "⚙️ Настройка Акцента для Сессии\n\n"
+        "Выберите, какой тип поддержки вам нужен прямо сейчас:\n\n"
+        "**🤗 Эмпатия:** Больше поддержки, сочувствия и валидации чувств.\n"
+        "**🛠️ Практика:** Больше конкретных шагов, задач и фокуса на решении.\n\n"
+        "Этот акцент будет применен к вашей следующей сессии (кнопка 'Начать разговор')."
+    )
+
+    new_media = InputMediaPhoto(
+        media=photos.main_photo,
+        caption=caption_text,
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    try:
+        await callback.message.edit_media(
+            media=new_media,
+            reply_markup=keyboards.style_selection_menu
+        )
+    except TelegramBadRequest:
+        await callback.message.edit_caption(
+            caption=caption_text,
+            reply_markup=keyboards.style_selection_menu,
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("set_style:"))
+async def style_selector_handler(callback: CallbackQuery, state: FSMContext) -> None:
+    style_code = callback.data.split(":")[1]
+
+    await state.update_data(ai_style=style_code)
+
+    if style_code == 'empathy':
+        style_text = "🤗 Эмпатия и Поддержка"
+    elif style_code == 'action':
+        style_text = "🛠️ Практика и Действие"
+    else:
+        style_text = "Стандартный режим SFBT"
+
+    confirmation_text = (
+        f"✅ **Акцент установлен!**\n\n"
+        f"Текущий стиль: **{style_text}**\n\n"
+        "Нажмите **'🎉 Начать разговор'**, чтобы начать сессию с этим акцентом."
+    )
+
+    try:
+        await callback.message.edit_caption(
+            caption=confirmation_text,
+            reply_markup=keyboards.back_to_menu_keyboard,
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except TelegramBadRequest as e:
+        await callback.message.answer(
+            text=confirmation_text,
+            reply_markup=keyboards.back_to_menu_keyboard,
+            parse_mode=ParseMode.MARKDOWN
+        )
+        logger.warning(f"Failed to edit message after style selection, sending new: {e}")
+
+    await callback.answer()
+
+
+async def _get_user_stats_async(user_id, users_collection):
+    """Фоновый сбор всех данных и метрик статистики."""
+    scores_cursor = users_collection.find(
+        {"user_id": user_id, "type": "progress_score"}
+    ).sort("timestamp", -1)
+
+    all_scores = await scores_cursor.to_list(length=None)
+
+    total_scores = len(all_scores)
+
+    if total_scores == 0:
+        return None, 0, 0, None, 0
+
+    numeric_scores = [doc['score'] for doc in all_scores if 'score' in doc]
+    latest_score = numeric_scores[0]
+    average_score = sum(numeric_scores) / total_scores
+    latest_timestamp = all_scores[0]['timestamp']
+
+    trend_line = ""
+    avg_latest_n = average_score
+    if total_scores >= 2:
+        last_n = min(5, total_scores)
+        avg_latest_n = sum(numeric_scores[:last_n]) / last_n
+
+    return numeric_scores, total_scores, average_score, latest_timestamp, avg_latest_n
+
+
+@router.callback_query(F.data == "get_user_stats")
+async def get_stats_handler(callback: CallbackQuery, users_collection, state: FSMContext, bot) -> None:
+    user_id = callback.from_user.id
+
+    await callback.answer()
+
+    initial_caption = "⏳ **Начинаю сбор статистики...**"
+    new_media = InputMediaPhoto(
+        media=photos.main_photo,
+        caption=initial_caption,
+        parse_mode=ParseMode.MARKDOWN
+    )
+
+    try:
+        message_to_edit = await callback.message.edit_media(
+            media=new_media,
+            reply_markup=keyboards.back_to_menu_keyboard
+        )
+    except TelegramBadRequest:
+        message_to_edit = await callback.message.edit_caption(
+            caption=initial_caption,
+            reply_markup=keyboards.back_to_menu_keyboard,
+            parse_mode=ParseMode.MARKDOWN
+        )
+
+    stop_event = asyncio.Event()
+
+    animation_task = asyncio.create_task(
+        update_stats_caption_animation(
+            bot,
+            callback.message.chat.id,
+            message_to_edit.message_id,
+            stop_event
+        )
+    )
+
+    generation_task = asyncio.create_task(
+        _get_user_stats_async(
+            user_id=user_id,
+            users_collection=users_collection
+        )
+    )
+
+    numeric_scores, total_scores, average_score, latest_timestamp, avg_latest_n = (None, 0, 0, None, 0)
+
+    try:
+        numeric_scores, total_scores, average_score, latest_timestamp, avg_latest_n = await generation_task
+    except Exception as e:
+        logger.error(f"Critical error during stats generation: {e}")
+    finally:
+        stop_event.set()
+        await asyncio.gather(animation_task, return_exceptions=True)
+
+    if total_scores == 0:
+        final_caption = (
+            "😔 **Статистика недоступна**\n\n"
+            "Вы еще не оценили свой прогресс ни разу. Начните с **'📈 Шкала Прогресса'**!"
+        )
+    else:
+        latest_score = numeric_scores[0]
+
+        trend_line = "Для отслеживания тенденции нужна минимум 2 оценки."
+        if total_scores >= 2 and average_score > 0:
+            diff_percent = (avg_latest_n - average_score) / average_score
+            last_n = min(5, total_scores)
+
+            trend_status = ""
+            trend_icon = "⚖️"
+
+            if diff_percent > 0.05:
+                trend_status = "заметно **улучшился**"
+                trend_icon = "🚀"
+            elif diff_percent < -0.05:
+                trend_status = "**снизился**"
+                trend_icon = "⬇️"
+            else:
+                trend_status = "стабилен"
+                trend_icon = "⚖️"
+
+            trend_line = f"Тенденция за последние {last_n} оценок: {trend_icon} Прогресс {trend_status}."
+
+        final_caption = (
+            "📊 **Ваша Персональная Статистика**\n\n"
+            "---"
+            "\n\n**✅ Оценки прогресса**"
+            f"\n- **Всего оценок:** `{total_scores}`"
+            f"\n- **Последняя оценка:** **{latest_score}/10** (от {latest_timestamp.strftime('%d.%m.%Y')})"
+            f"\n- **Средняя оценка:** **{average_score:.2f}/10**"
+            f"\n\n{trend_line}"
+            f"\n\n---"
+            f"\n\n**📝 Рекомендация:** Отмечайте, что изменилось между высоким и низким баллом, чтобы увидеть свои **точки роста**."
+        )
+    try:
+        await message_to_edit.edit_caption(
+            caption=final_caption,
+            reply_markup=keyboards.back_to_menu_keyboard,
+            parse_mode=ParseMode.MARKDOWN
+        )
+    except TelegramBadRequest as e:
+        logger.error(f"Failed to edit final caption after stats generation: {e}")
+        await callback.message.answer(
+            final_caption,
+            reply_markup=keyboards.back_to_menu_keyboard,
+            parse_mode=ParseMode.MARKDOWN
+        )

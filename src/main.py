@@ -28,10 +28,14 @@ mongo_client = None
 db = None
 users_collection = None
 
+DEFAULT_TEMPERATURE = 0.8
 
 def generate_content_sync(client, model_name, contents, system_instruction=None):
     """Синхронно вызывает Gemini API в отдельном потоке с системным промптом."""
-    config_params = {}
+    config_params = {
+        "temperature": DEFAULT_TEMPERATURE
+    }
+
     if system_instruction:
         config_params['system_instruction'] = system_instruction
 
