@@ -1,5 +1,5 @@
-import asyncio
 import logging
+import asyncio
 from datetime import datetime, timezone
 from aiogram.exceptions import TelegramBadRequest
 from aiogram import Router, F
@@ -309,6 +309,19 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         last_ai_message_id=final_message.message_id,
         real_user_message_count=real_user_message_count
     )
+
+@router.message(Command("admin"), config.IsAdmin())
+async def start_admin(message: Message) -> None:
+    text = (
+        "👋 Добро пожаловать в Админ-панель!\n\n"
+        "Вы находитесь в главном меню управления ботом."
+        "Выберите действие ниже, чтобы начать работу с пользователями или системой.\n"
+        "\n"
+        "[Внимание] Все критические действия (рассылка, бан) запускаются "
+        "через соответствующую кнопку."
+    )
+
+    await message.answer(text=text, reply_markup=keyboards.admin_keyboard)
 
 @router.message(F.content_type != "text")
 async def non_text_idle_handler(message: Message) -> None:

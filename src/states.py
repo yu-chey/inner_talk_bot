@@ -6,3 +6,7 @@ class SessionStates(StatesGroup):
 
 class MoodStates(StatesGroup):
     waiting_for_score = State()
+
+class MailingStates(StatesGroup):
+    waiting_for_text = State()
+    waiting_for_confirmation = State()

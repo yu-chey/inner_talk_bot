@@ -1,5 +1,8 @@
 import os
 import sys
+from aiogram.filters import BaseFilter
+from aiogram.types import TelegramObject
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -41,3 +44,10 @@ MAX_SESSIONS_PER_DAY = 3
 MAX_TOKENS_PER_SESSION = 4000
 PORTRAIT_COOLDOWN_HOURS = 24
 PROGRESS_SCORE_COOLDOWN_HOURS = 4
+
+admin_ids = [2079274689, 7341879283, 8391442752]
+RATE_LIMIT_DELAY = 1 / 25
+
+class IsAdmin(BaseFilter):
+    async def __call__(self, obj: TelegramObject) -> bool:
+        return obj.from_user.id in admin_ids

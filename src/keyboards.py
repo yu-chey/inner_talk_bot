@@ -95,3 +95,16 @@ style_selection_menu = InlineKeyboardMarkup(
             InlineKeyboardButton(text='➡️ Продолжить как обычно', callback_data='set_style:default')
         ]
     ])
+
+admin_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [
+            InlineKeyboardButton(text="📊 Статистика", callback_data="admin_stats"),
+            InlineKeyboardButton(text="✉️ Рассылка", callback_data="admin_news")
+        ]
+    ])
+
+back_to_admin_panel = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="<- Вернуться назад", callback_data="admin_panel")]
+    ])

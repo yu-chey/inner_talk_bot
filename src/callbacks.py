@@ -6,7 +6,7 @@ from aiogram import Router, F
 from aiogram.filters import StateFilter
 from aiogram.fsm.context import FSMContext
 from google.genai import types
-from aiogram.types import CallbackQuery, InputMediaPhoto, Message
+from aiogram.types import CallbackQuery, InputMediaPhoto, InlineKeyboardMarkup, InlineKeyboardButton, Message
 from . import keyboards
 from . import photos
 from . import texts
@@ -912,3 +912,164 @@ async def get_stats_handler(callback: CallbackQuery, users_collection, state: FS
             reply_markup=keyboards.back_to_menu_keyboard,
             parse_mode=ParseMode.MARKDOWN
         )
+
+async def get_total_user_count(users_collection) -> int:
+    pipeline = [
+        {"$group": {"_id": "$user_id"}},
+        {"$count": "unique_users_count"}
+    ]
+
+    cursor = users_collection.aggregate(pipeline)
+    result = await cursor.to_list(length=1)
+
+    if result:
+        return result[0].get("unique_users_count", 0)
+    else:
+        return 0
+
+async def get_total_user_messages(users_collection) -> int:
+    return await users_collection.count_documents({"type": "user_message"})
+
+async def get_distinct_users_who_sent_messages(users_collection):
+    pipeline = [
+        {"$match": {"type": "user_message"}},
+        {"$group": {"_id": "$user_id"}},
+        {"$count": "distinct_users"}
+    ]
+
+    cursor = users_collection.aggregate(pipeline)
+    result = await cursor.to_list(length=1)
+
+    return result[0].get("distinct_users", 0) if result else 0
+
+async def get_average_messages_per_user(users_collection):
+    total_messages_task = asyncio.create_task(get_total_user_messages(users_collection))
+    unique_users_task = asyncio.create_task(get_distinct_users_who_sent_messages(users_collection))
+
+    total_messages, unique_users = await asyncio.gather(total_messages_task, unique_users_task)
+
+    if unique_users == 0:
+        avg = 0
+    else:
+        avg = total_messages / unique_users
+
+    return {
+        "average_messages_per_user": round(avg, 2),
+        "total_messages": total_messages,
+        "unique_users": unique_users
+    }
+
+@router.callback_query(F.data == "admin_panel", config.IsAdmin())
+async def admin_panel(callback: CallbackQuery) -> None:
+    text = (
+        "👋 Добро пожаловать в Админ-панель!\n\n"
+        "Вы находитесь в главном меню управления ботом."
+        "Выберите действие ниже, чтобы начать работу с пользователями или системой.\n"
+        "\n"
+        "[Внимание] Все критические действия (рассылка, бан) запускаются "
+        "через соответствующую кнопку."
+    )
+
+    await callback.message.edit_text(text=text, reply_markup=keyboards.admin_keyboard)
+
+@router.callback_query(F.data == "admin_stats", config.IsAdmin())
+async def admin_stats(callback: CallbackQuery, users_collection) -> None:
+    unique_users = await get_total_user_count(users_collection=users_collection)
+    average_messages_per_user = await get_average_messages_per_user(users_collection=users_collection)
+
+    average = average_messages_per_user.get("average_messages_per_user")
+    active_users = average_messages_per_user.get("unique_users")
+    total_messages = average_messages_per_user.get("total_messages")
+
+    stats = (
+        "📊 Статистика InnerTalk\n"
+        "\n"
+        f"👥 Общий Охват: {unique_users:,} (Уникальных ID)\n"
+        f"💬 Всего Сообщений: {total_messages:,}\n"
+        "\n"
+        f"🟢 Активные Пользователи: {active_users:,}\n"
+        f"✨ Средняя Активность: {average:.2f} сообщений/пользователя\n"
+    )
+
+    await callback.message.edit_text(text=stats, reply_markup=keyboards.back_to_admin_panel)
+
+async def send_single_message(bot, user_id: int, text: str, **kwargs):
+    try:
+        await bot.send_message(user_id, text, **kwargs)
+        await asyncio.sleep(config.RATE_LIMIT_DELAY)
+    except Exception as e:
+        print(f"❌ Ошибка отправки {user_id}: {e}")
+
+
+async def get_user_ids(users_collection) -> list[int]:
+    projection = {"user_id": 1, "_id": 0}
+
+    cursor = users_collection.find(projection)
+
+    user_ids = []
+    async for doc in cursor:
+        user_ids.append(doc.get("user_id"))
+
+    return user_ids
+
+
+async def start_mass_mailing(bot, text: str, admin_id: int, users_collection):
+    user_ids = await get_user_ids(users_collection)
+
+    users_sent_count = 0
+
+    for user_id in user_ids:
+        asyncio.create_task(send_single_message(bot, user_id, text))
+        users_sent_count += 1
+
+    await bot.send_message(admin_id,
+                           f"✅ Рассылка успешно инициирована для {users_sent_count} пользователей. "
+                           f"Остаток процесса будет выполнен в фоновом режиме.", reply_markup=keyboards.back_to_admin_panel)
+
+
+@router.callback_query(F.data == "admin_news", config.IsAdmin())
+async def process_mailing_start(callback: CallbackQuery, state: FSMContext, users_collection):
+    await callback.message.edit_text("Введите текст для рассылки (поддерживается Markdown):")
+    await state.set_state(states.MailingStates.waiting_for_text)
+    await callback.answer()
+
+
+@router.message(states.MailingStates.waiting_for_text, F.text)
+async def process_mailing_text(message: Message, state: FSMContext, users_collection):
+    await state.update_data(mailing_text=message.text)
+
+    confirmation_keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Подтвердить", callback_data="mailing_confirm"),
+            InlineKeyboardButton(text="❌ Отменить", callback_data="mailing_cancel")
+        ]
+    ])
+
+    await message.answer(
+        "Подтверждение:\n\n"
+        f"{message.text}\n\n"
+        "Вы уверены, что хотите запустить рассылку?",
+        reply_markup=confirmation_keyboard
+    )
+    await state.set_state(states.MailingStates.waiting_for_confirmation)
+
+
+@router.callback_query(F.data == "mailing_confirm", states.MailingStates.waiting_for_confirmation)
+async def process_mailing_confirm(callback: CallbackQuery, state: FSMContext, users_collection):
+    data = await state.get_data()
+    mailing_text = data.get('mailing_text')
+    admin_id = callback.from_user.id
+
+    await state.clear()
+
+    asyncio.create_task(start_mass_mailing(callback.bot, mailing_text, admin_id, users_collection))
+
+    await callback.message.edit_text("✅ Рассылка запущена! Ждите отчета о завершении.")
+    await callback.answer()
+
+
+@router.callback_query(F.data == "mailing_cancel", states.MailingStates.waiting_for_confirmation)
+async def process_mailing_cancel(callback: CallbackQuery, state: FSMContext):
+    await state.clear()
+    await callback.message.edit_text("❌ Рассылка отменена.", reply_markup=keyboards.back_to_admin_panel)
+    await callback.answer()
