@@ -724,7 +724,7 @@ async def set_score_handler(callback: CallbackQuery, state: FSMContext, users_co
 
     await state.set_state(states.SessionStates.idle)
 
-    await callback.answer()
+    await callback.answer("Ваша оценка сохранена!")
 
 
 @router.callback_query(F.data == "start_style_selection", StateFilter(states.SessionStates.idle, None))
@@ -755,7 +755,7 @@ async def start_style_selection_handler(callback: CallbackQuery, state: FSMConte
             parse_mode=ParseMode.MARKDOWN
         )
 
-    await callback.answer()
+    await callback.answer("Выберите акцент...")
 
 
 @router.callback_query(F.data.startswith("set_style:"))
@@ -791,7 +791,7 @@ async def style_selector_handler(callback: CallbackQuery, state: FSMContext) -> 
         )
         logger.warning(f"Failed to edit message after style selection, sending new: {e}")
 
-    await callback.answer()
+    await callback.answer("Акцент сохранён!")
 
 
 async def _get_user_stats_async(user_id, users_collection):
@@ -825,7 +825,7 @@ async def _get_user_stats_async(user_id, users_collection):
 async def get_stats_handler(callback: CallbackQuery, users_collection, state: FSMContext, bot) -> None:
     user_id = callback.from_user.id
 
-    await callback.answer()
+    await callback.answer("Собираем вашу статистику...")
 
     initial_caption = "⏳ **Начинаю сбор статистики...**"
     new_media = InputMediaPhoto(

@@ -221,7 +221,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         await message.answer(
             f"🕰️ **Лимит сессии:** Общий объем диалога ({total_token_count} токенов) "
             f"достиг максимума (~{config.MAX_TOKENS_PER_SESSION} токенов). \n"
-            f"Для завершения и сохранения конспекта, пожалуйста, нажмите **'Закончить сессию'**.",
+            f"Для завершения и сохранения конспекта, пожалуйста, нажмите 'Закончить сессию'.",
             reply_markup=keyboards.end_session_menu,
             parse_mode=ParseMode.MARKDOWN
         )
@@ -239,7 +239,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         )
     )
 
-    ai_response = "Извините, произошла ошибка на стороне ИИ. Попробуйте закончить сессию и начать новую."
+    ai_response = "Извините, модель поставщика на данный момент перегружена. Попробуйте повторить последнее сообщение!"
 
     try:
         ai_response_obj = await loop.run_in_executor(
@@ -252,6 +252,10 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         )
         ai_response = ai_response_obj.text
     except Exception as e:
+        if "UNAVAILABLE" in e:
+            ai_response = ai_response
+        elif "RESOURCE_EXHAUSTED" in e:
+            ai_response = "В данный момент бот недоступен из-за исчерпанного лимита токенов. Пожалуйста, обратитесь в техническую поддержку."
         logger.error(f"Gemini API call error: {e}")
 
     stop_event.set()
