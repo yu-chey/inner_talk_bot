@@ -318,7 +318,13 @@ async def start_session_handler(callback: CallbackQuery, state: FSMContext, user
         )
         return
 
-    await callback.answer()
+    alert_message = (
+        "️️⚠️ Вам доступна лишь 1 сессия в день.\n\n"
+        "Советуем держать активной сессию весь день и в конце дня завершать сессию\n"
+        "Воспринимайте 1 сессию, как 1 день!"
+    )
+
+    await callback.answer(text=alert_message, show_alert=True)
 
     loading_caption = "⏳ **Готовлю рабочее пространство...**\nЗагружаю предыдущий контекст. Секунду..."
 
