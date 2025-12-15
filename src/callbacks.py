@@ -105,7 +105,7 @@ async def _generate_portrait_async(user_id, users_collection, generate_content_s
         "4.  **Ключевые Потребности/Ценности:** Какие фундаментальные потребности или ценности (например, безопасность, признание, самореализация, отношения) являются наиболее актуальными для этого человека.\n"
         "5.  **Совет от ИИ-Психолога:** Дай одну поддерживающую, фокусирующуюся на сильных сторонах и конструктивную рекомендацию.\n\n"
         "ФОРМАТИРОВАНИЕ:\n"
-        "* Оформи ответ в виде связного, профессионального текста объемом **не более 1000 символов** (для гарантии, что текст поместится в лимит Telegram).\n"
+        "* Оформи ответ в виде связного, профессионального текста объемом **не более 900 символов** (для гарантии, что текст поместится в лимит Telegram. ЭТО КРИТИЧЕСКИ ВАЖНО).\n"
         "* Используй **жирный шрифт** для заголовков разделов.\n"
         "* Отвечай исключительно на РУССКОМ языке.\n"
         "* **НИ ПРИ КАКИХ УСЛОВИЯХ НЕ ОТВЕЧАЙ ФРАЗАМИ ТИПА \"Я НЕ СПЕЦИАЛИСТ\" ИЛИ \"ОБРАТИТЕСЬ К ПРОФЕССИОНАЛУ\".** Твоя роль — дать анализ.\n\n"
@@ -322,11 +322,15 @@ async def start_session_handler(callback: CallbackQuery, state: FSMContext, user
 
     loading_caption = "⏳ **Готовлю рабочее пространство...**\nЗагружаю предыдущий контекст. Секунду..."
 
+    new_media = InputMediaPhoto(
+        media=photos.active_session_photo,
+        caption=loading_caption,
+        parse_mode=ParseMode.MARKDOWN
+    )
+
     try:
-        loading_message = await callback.message.edit_caption(
-            caption=loading_caption,
-            reply_markup=None,
-            parse_mode=ParseMode.MARKDOWN
+        loading_message = await callback.message.edit_media(
+            media=new_media
         )
         loading_message_id = loading_message.message_id
     except TelegramBadRequest:
@@ -349,11 +353,15 @@ async def start_session_handler(callback: CallbackQuery, state: FSMContext, user
         "Нажмите кнопку ниже, когда будете готовы закончить сессию."
     )
 
+    new_media = InputMediaPhoto(
+        media=photos.active_session_photo,
+        caption=start_caption,
+        parse_mode=ParseMode.MARKDOWN
+    )
+
     try:
-        await callback.message.edit_caption(
-            caption=start_caption,
-            reply_markup=keyboards.end_session_menu,
-            parse_mode=ParseMode.MARKDOWN
+        await callback.message.edit_media(
+            media=new_media
         )
     except TelegramBadRequest:
         await callback.message.answer(start_caption, reply_markup=keyboards.end_session_menu, parse_mode=ParseMode.MARKDOWN)
