@@ -239,7 +239,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         )
     )
 
-    ai_response = "Извините, модель поставщика на данный момент перегружена. Попробуйте повторить последнее сообщение!"
+    ai_response = "Извините, модель поставщика на данный момент перегружена. Попробуйте повторить последнее сообщение! Если ошибка повторяется, завершите сессию."
 
     try:
         ai_response_obj = await loop.run_in_executor(
