@@ -252,10 +252,6 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         )
         ai_response = ai_response_obj.text
     except Exception as e:
-        if "UNAVAILABLE" in e:
-            ai_response = ai_response
-        elif "RESOURCE_EXHAUSTED" in e:
-            ai_response = "В данный момент бот недоступен из-за исчерпанного лимита токенов. Пожалуйста, обратитесь в техническую поддержку."
         logger.error(f"Gemini API call error: {e}")
 
     stop_event.set()
