@@ -660,7 +660,7 @@ async def start_progress_scale_handler(callback: CallbackQuery, state: FSMContex
     )
 
     new_media = InputMediaPhoto(
-        media=photos.main_photo,
+        media=photos.progress_scale_photo,
         caption=caption_text,
         parse_mode=ParseMode.MARKDOWN
     )
@@ -829,7 +829,7 @@ async def get_stats_handler(callback: CallbackQuery, users_collection, state: FS
 
     initial_caption = "⏳ **Начинаю сбор статистики...**"
     new_media = InputMediaPhoto(
-        media=photos.main_photo,
+        media=photos.stats_photo,
         caption=initial_caption,
         parse_mode=ParseMode.MARKDOWN
     )

@@ -3,15 +3,15 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 main_menu = InlineKeyboardMarkup(
     inline_keyboard=[
         [
-            InlineKeyboardButton(text='🎉 Начать разговор', callback_data='start_session')
+            InlineKeyboardButton(text='🎉 Начать Разговор', callback_data='start_session')
         ],
         [
-            InlineKeyboardButton(text='🧠 Анализ личности', callback_data='get_portrait'),
+            InlineKeyboardButton(text='🧠 Анализ Личности', callback_data='get_portrait'),
             InlineKeyboardButton(text='⚙️ Настройка Акцента', callback_data='start_style_selection'),
         ],
         [
-            InlineKeyboardButton(text='📈 Шкала Прогресса', callback_data='start_progress_scale'),
-            InlineKeyboardButton(text='📊 Моя Статистика', callback_data='get_user_stats')
+            InlineKeyboardButton(text='📈 Дневник Эмоции', callback_data='start_progress_scale'),
+            InlineKeyboardButton(text='📊 Мой Прогресс', callback_data='get_user_stats')
         ],
         [
             InlineKeyboardButton(text='ℹ️ О нас', callback_data='about_us'),
