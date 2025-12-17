@@ -9,6 +9,7 @@ load_dotenv()
 
 TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN") or sys.exit(1)
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or sys.exit(1)
+OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 
 MONGODB_URI: str = os.getenv("MONGODB_URI") or sys.exit(1)
 DB_NAME: str = os.getenv("DB_NAME") or sys.exit(1)

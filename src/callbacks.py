@@ -10,12 +10,46 @@ from aiogram.types import CallbackQuery, InputMediaPhoto, InlineKeyboardMarkup, 
 from . import keyboards
 from . import photos
 from . import texts
-from aiogram.enums import ParseMode
 from . import states
 from . import config
 from .handlers import _save_to_db_async
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_portrait_text(text: str) -> str:
+    """Очищает результат портрета от Markdown и шаблонных вставок.
+
+    - удаляет **, __, *, _, `, #
+    - заменяет маркеры списков на «- »
+    - удаляет фразы-заглушки вроде "example text", "пример текста", "template"
+    - нормализует подряд идущие пустые строки до максимум двух
+    """
+    if not isinstance(text, str):
+        return ""
+    s = text
+    for m in ("**", "__", "*", "_", "`"):
+        s = s.replace(m, "")
+    s = "\n".join(line.lstrip("# ") for line in s.splitlines())
+    s = s.replace("•", "- ").replace("–", "-")
+    lowers = ["example text", "template", "placeholder", "пример текста", "пример", "заглушка"]
+    for token in lowers:
+        s = s.replace(token, "")
+        s = s.replace(token.title(), "")
+        s = s.replace(token.upper(), "")
+    lines = [ln.rstrip() for ln in s.splitlines()]
+    cleaned = []
+    empty_streak = 0
+    for ln in lines:
+        if ln.strip() == "":
+            empty_streak += 1
+            if empty_streak <= 2:
+                cleaned.append("")
+        else:
+            empty_streak = 0
+            cleaned.append(ln)
+    s = "\n".join(cleaned).strip()
+    return s
 
 router = Router()
 
@@ -25,15 +59,34 @@ ERROR_MESSAGES = [
     "Произошла критическая ошибка в системе. Ваш лимит не был исчерпан. Попробуйте, пожалуйста, снова."
 ]
 
+@router.callback_query(F.data == "main_menu")
+async def back_to_main_menu(callback: CallbackQuery):
+    caption_text = texts.MAIN_MENU_CAPTION
+    new_media = InputMediaPhoto(
+        media=photos.main_photo,
+        caption=caption_text
+    )
+    try:
+        await callback.message.edit_media(
+            media=new_media,
+            reply_markup=keyboards.main_menu
+        )
+    except TelegramBadRequest:
+        await callback.message.edit_caption(
+            caption=caption_text,
+            reply_markup=keyboards.main_menu
+        )
+    await callback.answer()
+
 
 async def update_portrait_caption_animation(bot, chat_id: int, message_id: int, stop_event: asyncio.Event):
     animation_texts = [
-        "**👂 Внимательно слушаю** вашу историю...",
-        "**🧠 Сканирую** ключевые слова и эмоции...",
-        "**📊 Ищу** повторяющиеся **паттерны**...",
-        "**🔬 Анализирую** когнитивные искажения...",
-        "**⚖️ Взвешиваю** потребности и ценности...",
-        "**💡 Формулирую** финальный совет..."
+        "👂 Внимательно слушаю вашу историю...",
+        "🧠 Сканирую ключевые слова и эмоции...",
+        "📊 Ищу повторяющиеся паттерны...",
+        "🔬 Анализирую когнитивные искажения...",
+        "⚖️ Взвешиваю потребности и ценности...",
+        "💡 Формулирую финальный совет..."
     ]
     delay = 1.2
 
@@ -47,8 +100,7 @@ async def update_portrait_caption_animation(bot, chat_id: int, message_id: int, 
                     await bot.edit_message_caption(
                         chat_id=chat_id,
                         message_id=message_id,
-                        caption=text_frame,
-                        parse_mode=ParseMode.MARKDOWN
+                        caption=text_frame
                     )
                 except TelegramBadRequest as e:
                     if "message is not modified" not in str(e):
@@ -61,12 +113,71 @@ async def update_portrait_caption_animation(bot, chat_id: int, message_id: int, 
     except Exception as e:
         logger.error(f"Error in update_portrait_caption_animation: {e}")
 
+
+@router.callback_query(F.data == "onb_next_1", StateFilter(states.OnboardingStates.step1))
+async def onboarding_next_1(callback: CallbackQuery, state: FSMContext):
+    new_media = InputMediaPhoto(
+        media=photos.main_photo,
+        caption=texts.ONBOARDING_STEP2
+    )
+    try:
+        await callback.message.edit_media(media=new_media, reply_markup=keyboards.onboarding_step2)
+    except TelegramBadRequest:
+        await callback.message.edit_caption(caption=texts.ONBOARDING_STEP2, reply_markup=keyboards.onboarding_step2)
+    await state.set_state(states.OnboardingStates.step2)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "onb_next_2", StateFilter(states.OnboardingStates.step2))
+async def onboarding_next_2(callback: CallbackQuery, state: FSMContext):
+    new_media = InputMediaPhoto(
+        media=photos.main_photo,
+        caption=texts.ONBOARDING_STEP3
+    )
+    try:
+        await callback.message.edit_media(media=new_media, reply_markup=keyboards.onboarding_step3)
+    except TelegramBadRequest:
+        await callback.message.edit_caption(caption=texts.ONBOARDING_STEP3, reply_markup=keyboards.onboarding_step3)
+    await state.set_state(states.OnboardingStates.step3)
+    await callback.answer()
+
+
+async def _finish_onboarding(callback: CallbackQuery, users_collection, state: FSMContext):
+    user_id = callback.from_user.id
+    try:
+        await users_collection.update_one(
+            {"user_id": user_id, "type": "user_profile"},
+            {"$set": {"onboarding_completed": True}},
+            upsert=True
+        )
+    except Exception as e:
+        logger.error(f"Ошибка обновления статуса онбординга: {e}")
+
+    await state.set_state(states.SessionStates.idle)
+    caption_text = texts.MAIN_MENU_CAPTION
+    new_media = InputMediaPhoto(media=photos.main_photo, caption=caption_text)
+    try:
+        await callback.message.edit_media(media=new_media, reply_markup=keyboards.main_menu)
+    except TelegramBadRequest:
+        await callback.message.edit_caption(caption=caption_text, reply_markup=keyboards.main_menu)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "onb_finish", StateFilter(states.OnboardingStates.step3))
+async def onboarding_finish(callback: CallbackQuery, users_collection, state: FSMContext):
+    await _finish_onboarding(callback, users_collection, state)
+
+
+@router.callback_query(F.data == "onb_skip", StateFilter(states.OnboardingStates.step1, states.OnboardingStates.step2, states.OnboardingStates.step3))
+async def onboarding_skip(callback: CallbackQuery, users_collection, state: FSMContext):
+    await _finish_onboarding(callback, users_collection, state)
+
 async def update_stats_caption_animation(bot, chat_id: int, message_id: int, stop_event: asyncio.Event):
     animation_texts = [
-        "**📊 Собираю** все оценки прогресса...",
-        "**🧠 Вычисляю** средний балл...",
-        "**📈 Анализирую** тенденции за последний месяц...",
-        "**💡 Формулирую** финальные выводы..."
+        "📊 Собираю все оценки прогресса...",
+        "🧠 Вычисляю средний балл...",
+        "📈 Анализирую тенденции за последний месяц...",
+        "💡 Формулирую финальные выводы..."
     ]
     delay = 1.0
 
@@ -80,8 +191,7 @@ async def update_stats_caption_animation(bot, chat_id: int, message_id: int, sto
                     await bot.edit_message_caption(
                         chat_id=chat_id,
                         message_id=message_id,
-                        caption=text_frame,
-                        parse_mode=ParseMode.MARKDOWN
+                        caption=text_frame
                     )
                 except TelegramBadRequest as e:
                     if "message is not modified" not in str(e):
@@ -95,20 +205,22 @@ async def update_stats_caption_animation(bot, chat_id: int, message_id: int, sto
         logger.error(f"Error in update_stats_caption_animation: {e}")
 
 
-async def _generate_portrait_async(user_id, users_collection, generate_content_sync_func, gemini_client):
+async def _generate_portrait_async(user_id, users_collection, generate_content_sync_func, gemini_client,
+                                   openai_client=None, generate_openai_func=None, alert_func=None, bot=None):
     portrait_prompt_template = (
         "ТЫ — профессиональный аналитик, специализирующийся на формировании психологического портрета и стиля общения на основе текстовых данных. Твоя задача — проанализировать представленный ниже текст, который является диалогами пользователя.\n\n"
         "ТВОЙ АНАЛИЗ ДОЛЖЕН СОДЕРЖАТЬ СЛЕДУЮЩИЕ РАЗДЕЛЫ:\n"
-        "1.  **Общий Эмоциональный Фон:** Какие преобладающие эмоции прослеживаются в сообщениях (тревога, неуверенность, стремление к контролю, оптимизм и т.д.)?\n"
-        "2.  **Паттерны Мышления и Реакций:** Какие повторяющиеся темы, установки, когнитивные искажения (например, \"все или ничего\", катастрофизация, сверхобобщение) или защитные механизмы можно отметить?\n"
-        "3.  **Стиль Общения:** Насколько сообщения детальные, эмоционально окрашенные, структурированные, склонны ли к самокопанию или, наоборот, поверхностны?\n"
-        "4.  **Ключевые Потребности/Ценности:** Какие фундаментальные потребности или ценности (например, безопасность, признание, самореализация, отношения) являются наиболее актуальными для этого человека.\n"
-        "5.  **Совет от ИИ-Психолога:** Дай одну поддерживающую, фокусирующуюся на сильных сторонах и конструктивную рекомендацию.\n\n"
+        "1.  ОБЩИЙ ЭМОЦИОНАЛЬНЫЙ ФОН: Какие преобладающие эмоции прослеживаются в сообщениях (тревога, неуверенность, стремление к контролю, оптимизм и т.д.)?\n"
+        "2.  ПАТТЕРНЫ МЫШЛЕНИЯ И РЕАКЦИЙ: Какие повторяющиеся темы, установки, когнитивные искажения (например, \"все или ничего\", катастрофизация, сверхобобщение) или защитные механизмы можно отметить?\n"
+        "3.  СТИЛЬ ОБЩЕНИЯ: Насколько сообщения детальные, эмоционально окрашенные, структурированные, склонны ли к самокопанию или, наоборот, поверхностны?\n"
+        "4.  КЛЮЧЕВЫЕ ПОТРЕБНОСТИ/ЦЕННОСТИ: Какие фундаментальные потребности или ценности (например, безопасность, признание, самореализация, отношения) являются наиболее актуальными для этого человека.\n"
+        "5.  СОВЕТ ОТ ИИ-ПСИХОЛОГА: Дай одну поддерживающую, фокусирующуюся на сильных сторонах и конструктивную рекомендацию.\n\n"
         "ФОРМАТИРОВАНИЕ:\n"
-        "* Оформи ответ в виде связного, профессионального текста объемом **не более 900 символов** (для гарантии, что текст поместится в лимит Telegram. ЭТО КРИТИЧЕСКИ ВАЖНО).\n"
-        "* Используй **жирный шрифт** для заголовков разделов.\n"
+        "* Оформи ответ в виде связного, профессионального текста с нормальной детализацией. НЕ ограничивай длину специально — она будет показана постранично.\n"
+        "* Пиши ЧИСТЫМ ТЕКСТОМ без Markdown/разметки (не используй **жирный**, списки с маркерами, кавычки форматирования и т.п.).\n"
         "* Отвечай исключительно на РУССКОМ языке.\n"
-        "* **НИ ПРИ КАКИХ УСЛОВИЯХ НЕ ОТВЕЧАЙ ФРАЗАМИ ТИПА \"Я НЕ СПЕЦИАЛИСТ\" ИЛИ \"ОБРАТИТЕСЬ К ПРОФЕССИОНАЛУ\".** Твоя роль — дать анализ.\n\n"
+        "* Запрещены любые заглушки/примеры вроде 'example text', 'пример текста', 'template', '[...]'. Пиши только фактический анализ.\n"
+        "* НИ ПРИ КАКИХ УСЛОВИЯХ НЕ ОТВЕЧАЙ ФРАЗАМИ ТИПА \"Я НЕ СПЕЦИАЛИСТ\" ИЛИ \"ОБРАТИТЕСЬ К ПРОФЕССИОНАЛУ\". Твоя роль — дать анализ.\n\n"
         "ИСТОРИЯ СООБЩЕНИЙ ПОЛЬЗОВАТЕЛЯ:\n---\n{dialog_text}\n---"
     )
 
@@ -133,7 +245,6 @@ async def _generate_portrait_async(user_id, users_collection, generate_content_s
     dialog_text = "\n".join([f"- {msg}" for msg in filtered_dialogs])
     summary_prompt = portrait_prompt_template.format(dialog_text=dialog_text)
 
-    loop = asyncio.get_event_loop()
     portrait_contents = [
         types.Content(
             role="user",
@@ -143,22 +254,32 @@ async def _generate_portrait_async(user_id, users_collection, generate_content_s
 
     portrait_result = ERROR_MESSAGES[0]
 
-    try:
-        portrait_response = await loop.run_in_executor(
-            None,
-            generate_content_sync_func,
-            gemini_client,
-            'gemini-2.5-flash',
-            portrait_contents
-        )
-        portrait_result = portrait_response.text
-    except Exception as e:
-        logger.error(f"Gemini error during portrait generation: {e}")
+    if openai_client and generate_openai_func:
+        for model in ("gpt-5.2", "gpt-5.1"):
+            try:
+                text = await generate_openai_func(openai_client, model, summary_prompt, None)
+                if text and isinstance(text, str) and len(text.strip()) > 0:
+                    return text
+            except Exception as e:
+                logger.warning(f"OpenAI model '{model}' failed: {e}")
+                continue
+    else:
+        if alert_func and bot:
+            try:
+                await alert_func(bot, "Портрет недоступен: отсутствует OPENAI_API_KEY или клиент OpenAI не инициализирован.", key="portrait_no_openai")
+            except Exception:
+                pass
 
+    if alert_func and bot:
+        try:
+            await alert_func(bot, f"Сбой генерации портрета у пользователя {user_id}: обе модели OpenAI (gpt-5.2/5.1) не ответили.", key="portrait_failed")
+        except Exception:
+            pass
     return portrait_result
 
 
-async def _save_summary_async(session_data, users_collection, generate_content_sync_func, gemini_client):
+async def _save_summary_async(session_data, users_collection, generate_content_sync_func, gemini_client,
+                              openai_client=None, generate_openai_func=None, alert_func=None, bot=None):
     user_id = session_data['user_id']
     full_dialog = session_data['full_dialog']
     real_user_message_count = session_data['real_user_message_count']
@@ -182,23 +303,47 @@ async def _save_summary_async(session_data, users_collection, generate_content_s
         )
     ]
 
-    loop = asyncio.get_event_loop()
     session_summary = "Конспект не был сгенерирован из-за ошибки."
 
-    try:
-        summary_response = await loop.run_in_executor(
-            None,
-            generate_content_sync_func,
-            gemini_client,
-            'gemini-2.5-flash',
-            dialog_contents,
-            system_instruction
-        )
-        session_summary = summary_response.text
-        logger.info(
-            f"Конспект для пользователя {user_id} успешно сгенерирован. Длина: {len(session_summary)} символов.")
-    except Exception as e:
-        logger.error(f"Gemini error during session summary: {e}")
+    tried_openai = False
+    if openai_client and generate_openai_func:
+        tried_openai = True
+        for model in ("gpt-4.1-mini", "gpt-5-mini"):
+            try:
+                joined_dialog = "\n".join([f"{item['role']}: {item['content']}" for item in dialog_for_summary])
+                text = await generate_openai_func(openai_client, model, joined_dialog, system_instruction)
+                if text and text.strip():
+                    session_summary = text
+                    logger.info(
+                        f"Конспект (OpenAI {model}) сгенерирован для пользователя {user_id}. Длина: {len(session_summary)} символов.")
+                    break
+            except Exception as e:
+                logger.warning(f"OpenAI summary model '{model}' failed: {e}")
+        else:
+            if alert_func and bot:
+                try:
+                    await alert_func(bot, f"Сбой конспекта по OpenAI (4.1-mini/5-mini) для user {user_id}. Пробуем Gemini.", key="summary_openai_failed")
+                except Exception:
+                    pass
+
+    if not tried_openai or (tried_openai and session_summary == "Конспект не был сгенерирован из-за ошибки."):
+        try:
+            summary_response = await generate_content_sync_func(
+                gemini_client,
+                'gemini-2.5-flash',
+                dialog_contents,
+                system_instruction
+            )
+            session_summary = summary_response.text
+            logger.info(
+                f"Конспект (Gemini) для пользователя {user_id} успешно сгенерирован. Длина: {len(session_summary)} символов.")
+        except Exception as e:
+            logger.error(f"Gemini error during session summary: {e}")
+            if alert_func and bot:
+                try:
+                    await alert_func(bot, f"Не удалось сгенерировать конспект ни OpenAI, ни Gemini для user {user_id}.", key="summary_all_failed")
+                except Exception:
+                    pass
 
     session_record = {
         "user_id": user_id,
@@ -253,8 +398,7 @@ async def menu_handler(callback: CallbackQuery, state: FSMContext) -> None:
     try:
         new_media = InputMediaPhoto(
             media=photos.main_photo,
-            caption=caption_text,
-            parse_mode=ParseMode.MARKDOWN
+            caption=caption_text
         )
         await callback.message.edit_media(
             media=new_media,
@@ -263,8 +407,7 @@ async def menu_handler(callback: CallbackQuery, state: FSMContext) -> None:
     except TelegramBadRequest:
         await callback.message.edit_caption(
             caption=caption_text,
-            reply_markup=keyboards.main_menu,
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboards.main_menu
         )
 
     await callback.answer()
@@ -275,8 +418,7 @@ async def about_us_handler(callback: CallbackQuery) -> None:
     caption_text = texts.ABOUT_US_CAPTION
     new_media = InputMediaPhoto(
         media=photos.about_us_photo,
-        caption=caption_text,
-        parse_mode=ParseMode.MARKDOWN
+        caption=caption_text
     )
 
     try:
@@ -287,8 +429,7 @@ async def about_us_handler(callback: CallbackQuery) -> None:
     except TelegramBadRequest:
         await callback.message.edit_caption(
             caption=caption_text,
-            reply_markup=keyboards.about_us_menu,
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboards.about_us_menu
         )
 
     await callback.answer()
@@ -326,12 +467,11 @@ async def start_session_handler(callback: CallbackQuery, state: FSMContext, user
 
     await callback.answer(text=alert_message, show_alert=True)
 
-    loading_caption = "⏳ **Готовлю рабочее пространство...**\nЗагружаю предыдущий контекст. Секунду..."
+    loading_caption = "⏳ Готовлю рабочее пространство...\nЗагружаю предыдущий контекст. Секунду..."
 
     new_media = InputMediaPhoto(
         media=photos.active_session_photo,
-        caption=loading_caption,
-        parse_mode=ParseMode.MARKDOWN
+        caption=loading_caption
     )
 
     try:
@@ -340,8 +480,7 @@ async def start_session_handler(callback: CallbackQuery, state: FSMContext, user
         )
         loading_message_id = loading_message.message_id
     except TelegramBadRequest:
-        loading_message = await callback.message.answer(loading_caption, reply_markup=None,
-                                                        parse_mode=ParseMode.MARKDOWN)
+        loading_message = await callback.message.answer(loading_caption, reply_markup=None)
         loading_message_id = loading_message.message_id
 
     await _load_session_history(
@@ -350,9 +489,24 @@ async def start_session_handler(callback: CallbackQuery, state: FSMContext, user
         state=state
     )
 
+    try:
+        data = await state.get_data()
+        ai_style_present = data.get("ai_style")
+        if not ai_style_present:
+            profile = await users_collection.find_one({"user_id": callback.from_user.id, "type": "user_profile"})
+            pref = None
+            if profile:
+                pref = profile.get("preferred_style")
+            if pref in ("empathy", "action", "default"):
+                await state.update_data(ai_style=pref)
+            else:
+                await state.update_data(ai_style="default")
+    except Exception as e:
+        logger.error(f"Не удалось загрузить preferred_style: {e}")
+
     start_caption = (
-        "🎉 **Сессия начата!** Я слушаю тебя. Помни, что сессия ограничена объемом **"
-        f"~{config.MAX_TOKENS_PER_SESSION} токенов** для контроля расходов (это примерно 50-70 сообщений). \n"
+        "🎉 Сессия начата! Я слушаю тебя. Помни, что сессия ограничена объемом "
+        f"~{config.MAX_TOKENS_PER_SESSION} токенов для контроля расходов (это примерно 50-70 сообщений). \n"
         "Удачного вам диалога! 😊\n"
         "Помните, что я здесь для того, чтобы поддержать вас. "
         "Говорите свободно, я слушаю внимательно. "
@@ -361,8 +515,7 @@ async def start_session_handler(callback: CallbackQuery, state: FSMContext, user
 
     new_media = InputMediaPhoto(
         media=photos.active_session_photo,
-        caption=start_caption,
-        parse_mode=ParseMode.MARKDOWN
+        caption=start_caption
     )
 
     try:
@@ -370,7 +523,7 @@ async def start_session_handler(callback: CallbackQuery, state: FSMContext, user
             media=new_media
         )
     except TelegramBadRequest:
-        await callback.message.answer(start_caption, reply_markup=keyboards.end_session_menu, parse_mode=ParseMode.MARKDOWN)
+        await callback.message.answer(start_caption, reply_markup=keyboards.end_session_menu)
 
     await state.set_state(states.SessionStates.in_session)
     await state.update_data(
@@ -381,7 +534,7 @@ async def start_session_handler(callback: CallbackQuery, state: FSMContext, user
 
 @router.callback_query(F.data == "end_session", StateFilter(states.SessionStates.in_session))
 async def end_session_handler(callback: CallbackQuery, state: FSMContext, users_collection, generate_content_sync_func,
-                              gemini_client) -> None:
+                              gemini_client, openai_client=None, generate_openai_func=None, alert_func=None) -> None:
     data = await state.get_data()
     full_dialog = data.get('current_dialog', [])
     last_ai_message_id = data.get('last_ai_message_id')
@@ -414,15 +567,14 @@ async def end_session_handler(callback: CallbackQuery, state: FSMContext, users_
         await callback.message.answer_photo(
             photo=photos.main_photo,
             caption=caption_text,
-            reply_markup=keyboards.main_menu,
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboards.main_menu
         )
 
         await callback.answer()
         return
 
-    processing_text = "📝 **Создаю конспект** и завершаю сессию..."
-    processing_message = await callback.message.answer(text=processing_text, parse_mode=ParseMode.MARKDOWN)
+    processing_text = "📝 Создаю конспект и завершаю сессию..."
+    processing_message = await callback.message.answer(text=processing_text)
 
     session_data = {
         "user_id": user_id,
@@ -434,19 +586,23 @@ async def end_session_handler(callback: CallbackQuery, state: FSMContext, users_
         session_data,
         users_collection,
         generate_content_sync_func,
-        gemini_client
+        gemini_client,
+        openai_client=openai_client,
+        generate_openai_func=generate_openai_func,
+        alert_func=alert_func,
+        bot=callback.bot
     )
 
     final_text = (
         f"✅ Сессия завершена! "
-        f"Вы обменялись *{real_user_message_count}* сообщениями.\n"
+        f"Вы обменялись {real_user_message_count} сообщениями.\n"
         f"📝 Конспект сохранен."
     )
 
     try:
-        await processing_message.edit_text(text=final_text, parse_mode=ParseMode.MARKDOWN)
+        await processing_message.edit_text(text=final_text)
     except TelegramBadRequest:
-        await callback.message.answer(text=final_text, parse_mode=ParseMode.MARKDOWN)
+        await callback.message.answer(text=final_text)
 
     data = await state.get_data()
     saved_style = data.get("ai_style", "default")
@@ -459,8 +615,7 @@ async def end_session_handler(callback: CallbackQuery, state: FSMContext, users_
     await callback.message.answer_photo(
         photo=photos.main_photo,
         caption=caption_text,
-        reply_markup=keyboards.main_menu,
-        parse_mode=ParseMode.MARKDOWN
+        reply_markup=keyboards.main_menu
     )
 
     await callback.answer()
@@ -474,9 +629,20 @@ async def get_profile_handler(callback: CallbackQuery) -> None:
 
 @router.callback_query(F.data == "get_portrait")
 async def get_portrait_handler(callback: CallbackQuery, users_collection, generate_content_sync_func, gemini_client,
-                               state: FSMContext, bot) -> None:
+                               state: FSMContext, bot, openai_client=None, generate_openai_func=None, alert_func=None) -> None:
     user_id = callback.from_user.id
     current_time = datetime.now(timezone.utc)
+
+    data_now = await state.get_data()
+    if data_now.get("portrait_loading"):
+        await callback.answer("Анализ уже выполняется, пожалуйста подождите…", show_alert=False)
+        return
+    last_req = data_now.get("last_portrait_req_ts")
+    if isinstance(last_req, datetime):
+        if (current_time - last_req).total_seconds() < 10:
+            await callback.answer("Не так быстро, пожалуйста 🙂", show_alert=False)
+            return
+    await state.update_data(last_portrait_req_ts=current_time)
 
     user_doc = await users_collection.find_one({"user_id": user_id, "type": "user_profile"})
     last_portrait_timestamp_from_db = user_doc.get("last_portrait_timestamp") if user_doc and isinstance(
@@ -503,11 +669,10 @@ async def get_portrait_handler(callback: CallbackQuery, users_collection, genera
 
     await callback.answer("Запускаю анализ... 🧠")
 
-    initial_caption = "⏳ **Начинаю анализ...**"
+    initial_caption = "⏳ Начинаю анализ..."
     new_media = InputMediaPhoto(
         media=photos.portrait_photo,
-        caption=initial_caption,
-        parse_mode=ParseMode.MARKDOWN
+        caption=initial_caption
     )
 
     try:
@@ -518,8 +683,7 @@ async def get_portrait_handler(callback: CallbackQuery, users_collection, genera
     except TelegramBadRequest:
         message_to_edit = await callback.message.edit_caption(
             caption=initial_caption,
-            reply_markup=keyboards.back_to_menu_keyboard,
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboards.back_to_menu_keyboard
         )
 
     await state.update_data(
@@ -543,7 +707,11 @@ async def get_portrait_handler(callback: CallbackQuery, users_collection, genera
             user_id=callback.from_user.id,
             users_collection=users_collection,
             generate_content_sync_func=generate_content_sync_func,
-            gemini_client=gemini_client
+            gemini_client=gemini_client,
+            openai_client=openai_client,
+            generate_openai_func=generate_openai_func,
+            alert_func=alert_func,
+            bot=bot
         )
     )
 
@@ -571,32 +739,80 @@ async def get_portrait_handler(callback: CallbackQuery, users_collection, genera
 
     await state.update_data(portrait_loading=False, loading_message_id=None)
 
-    caption_limit = 1020
+    header = "Ваш Психологический Портрет: 🧠\n\n" if is_successful_generation else ""
+    cleaned_portrait = _sanitize_portrait_text(portrait_result) if is_successful_generation else portrait_result
+    full_text = f"{header}{cleaned_portrait}" if cleaned_portrait else (ERROR_MESSAGES[0])
 
-    if is_successful_generation:
-        header = "**Ваш Психологический Портрет: 🧠**\n\n"
-    else:
-        header = ""
+    max_page_len = 1000
+    pages = []
+    text_left = full_text
+    while text_left:
+        chunk = text_left[:max_page_len]
+        if len(text_left) > max_page_len:
+            last_nl = chunk.rfind("\n")
+            last_space = chunk.rfind(" ")
+            cut_at = max(last_nl, last_space)
+            if cut_at > 200:
+                chunk = chunk[:cut_at]
+        pages.append(chunk)
+        text_left = text_left[len(chunk):]
 
-    if len(portrait_result) > caption_limit - len(header):
-        portrait_result = portrait_result[:caption_limit - len(header) - 5] + "..."
+    total_pages = max(1, len(pages))
+    current_page = 1
 
-    final_caption = f"{header}{portrait_result}"
+    await state.update_data(
+        portrait_pages=pages,
+        portrait_page_idx=current_page,
+        portrait_message_id=message_to_edit.message_id
+    )
 
     try:
         await message_to_edit.edit_caption(
-            caption=final_caption,
-            reply_markup=keyboards.back_to_menu_keyboard,
-            parse_mode=ParseMode.MARKDOWN
+            caption=pages[0] if pages else full_text,
+            reply_markup=keyboards.portrait_pagination_keyboard(current_page, total_pages)
         )
     except TelegramBadRequest as e:
         logger.error(f"Failed to edit final caption after portrait generation: {e}")
         await callback.message.answer_photo(
             photo=photos.portrait_photo,
-            caption=final_caption,
-            reply_markup=keyboards.back_to_menu_keyboard,
-            parse_mode=ParseMode.MARKDOWN
+            caption=pages[0] if pages else full_text,
+            reply_markup=keyboards.portrait_pagination_keyboard(current_page, total_pages)
         )
+
+
+@router.callback_query(F.data.startswith("portrait_page:"))
+async def portrait_pagination_handler(callback: CallbackQuery, state: FSMContext):
+    data = await state.get_data()
+    pages = data.get("portrait_pages", [])
+    msg_id = data.get("portrait_message_id")
+    try:
+        requested = int(callback.data.split(":")[1])
+    except Exception:
+        await callback.answer()
+        return
+
+    if not pages:
+        await callback.answer()
+        return
+    total_pages = len(pages)
+    if requested < 1 or requested > total_pages:
+        await callback.answer()
+        return
+
+    await state.update_data(portrait_page_idx=requested)
+    try:
+        await callback.bot.edit_message_caption(
+            chat_id=callback.message.chat.id,
+            message_id=msg_id or callback.message.message_id,
+            caption=pages[requested - 1],
+            reply_markup=keyboards.portrait_pagination_keyboard(requested, total_pages)
+        )
+    except TelegramBadRequest as e:
+        await callback.message.answer(
+            text=pages[requested - 1],
+            reply_markup=keyboards.portrait_pagination_keyboard(requested, total_pages)
+        )
+    await callback.answer()
 
 
 @router.callback_query(F.data == "call_support")
@@ -605,8 +821,7 @@ async def call_support_handler(callback: CallbackQuery) -> None:
 
     new_media = InputMediaPhoto(
         media=photos.support_photo,
-        caption=caption_text,
-        parse_mode=ParseMode.MARKDOWN
+        caption=caption_text
     )
 
     try:
@@ -617,17 +832,24 @@ async def call_support_handler(callback: CallbackQuery) -> None:
     except TelegramBadRequest:
         await callback.message.edit_caption(
             caption=caption_text,
-            reply_markup=keyboards.support_menu,
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboards.support_menu
         )
 
     await callback.answer()
 
 
-@router.callback_query(F.data == "start_progress_scale", StateFilter(states.SessionStates.idle, None))
+@router.callback_query(F.data == "start_progress_scale", StateFilter(states.SessionStates.idle, None, states.OnboardingStates.step3))
 async def start_progress_scale_handler(callback: CallbackQuery, state: FSMContext, users_collection) -> None:
     user_id = callback.from_user.id
     current_time = datetime.now(timezone.utc)
+    try:
+        cur_state = await state.get_state()
+        if cur_state == states.OnboardingStates.step3:
+            await state.update_data(onboarding_back_to_step3=True)
+        else:
+            await state.update_data(onboarding_back_to_step3=False)
+    except Exception:
+        pass
 
     last_score_doc = await users_collection.find_one(
         {"user_id": user_id, "type": "progress_score"},
@@ -654,15 +876,14 @@ async def start_progress_scale_handler(callback: CallbackQuery, state: FSMContex
     await state.set_state(states.MoodStates.waiting_for_score)
 
     caption_text = (
-        "📈 **Шкала Прогресса**\n\n"
+        "📈 Шкала прогресса\n\n"
         "Как вы оцениваете свое текущее состояние или прогресс в решении проблемы?\n\n"
         "По шкале от 1 до 10 👨🏼‍⚕️"
     )
 
     new_media = InputMediaPhoto(
         media=photos.progress_scale_photo,
-        caption=caption_text,
-        parse_mode=ParseMode.MARKDOWN
+        caption=caption_text
     )
 
     try:
@@ -673,8 +894,7 @@ async def start_progress_scale_handler(callback: CallbackQuery, state: FSMContex
     except TelegramBadRequest as e:
         await callback.message.edit_caption(
             caption=caption_text,
-            reply_markup=keyboards.progress_scale_menu,
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboards.progress_scale_menu
         )
         logger.warning(f"Failed to edit media for scale, used edit_caption: {e}")
 
@@ -703,45 +923,63 @@ async def set_score_handler(callback: CallbackQuery, state: FSMContext, users_co
     progress_bar = f"{filled}{empty}"
 
     final_caption = (
-        f"✅ **Отлично! Ваша оценка сохранена.**\n\n"
-        f"Текущий прогресс: **{progress_bar}** ({score}/10)\n\n"
+        f"✅ Отлично! Ваша оценка сохранена.\n\n"
+        f"Текущий прогресс: {progress_bar} ({score}/10)\n\n"
         "Чем чаще вы оцениваете прогресс, тем лучше видите свой путь. Нажмите кнопку, чтобы вернуться к основным функциям."
     )
 
-    try:
-        await callback.message.edit_caption(
-            caption=final_caption,
-            reply_markup=keyboards.back_to_menu_keyboard,
-            parse_mode=ParseMode.MARKDOWN
-        )
-    except TelegramBadRequest as e:
-        logger.error(f"Failed to edit caption after score: {e}")
-        await callback.message.answer(
-            text=final_caption,
-            reply_markup=keyboards.back_to_menu_keyboard,
-            parse_mode=ParseMode.MARKDOWN
-        )
+    data = await state.get_data()
+    if data.get("onboarding_back_to_step3"):
+        try:
+            await callback.message.edit_caption(
+                caption=texts.ONBOARDING_STEP3,
+                reply_markup=keyboards.onboarding_step3
+            )
+        except TelegramBadRequest as e:
+            logger.warning(f"Failed to return to onboarding step3 after score: {e}")
+            await callback.message.answer(texts.ONBOARDING_STEP3, reply_markup=keyboards.onboarding_step3)
+        await state.set_state(states.OnboardingStates.step3)
+        await state.update_data(onboarding_back_to_step3=False)
+        await callback.answer("Ваша оценка сохранена!")
+    else:
+        try:
+            await callback.message.edit_caption(
+                caption=final_caption,
+                reply_markup=keyboards.back_to_menu_keyboard
+            )
+        except TelegramBadRequest as e:
+            logger.error(f"Failed to edit caption after score: {e}")
+            await callback.message.answer(
+                text=final_caption,
+                reply_markup=keyboards.back_to_menu_keyboard
+            )
+        await state.set_state(states.SessionStates.idle)
+        await callback.answer("Ваша оценка сохранена!")
 
-    await state.set_state(states.SessionStates.idle)
 
-    await callback.answer("Ваша оценка сохранена!")
-
-
-@router.callback_query(F.data == "start_style_selection", StateFilter(states.SessionStates.idle, None))
+@router.callback_query(F.data == "start_style_selection", StateFilter(states.SessionStates.idle, None, states.OnboardingStates.step3))
 async def start_style_selection_handler(callback: CallbackQuery, state: FSMContext) -> None:
     caption_text = (
-        "⚙️ Настройка Акцента для Сессии\n\n"
+        "⚙️ Настройка акцента для сессии\n\n"
         "Выберите, какой тип поддержки вам нужен прямо сейчас:\n\n"
-        "**🤗 Эмпатия:** Больше поддержки, сочувствия и валидации чувств.\n"
-        "**🛠️ Практика:** Больше конкретных шагов, задач и фокуса на решении.\n\n"
+        "🤗 Эмпатия: Больше поддержки, сочувствия и валидации чувств.\n"
+        "🛠️ Практика: Больше конкретных шагов, задач и фокуса на решении.\n\n"
         "Этот акцент будет применен к вашей следующей сессии (кнопка 'Начать разговор')."
     )
 
     new_media = InputMediaPhoto(
         media=photos.main_photo,
-        caption=caption_text,
-        parse_mode=ParseMode.MARKDOWN
+        caption=caption_text
     )
+
+    try:
+        cur_state = await state.get_state()
+        if cur_state == states.OnboardingStates.step3:
+            await state.update_data(onboarding_back_to_step3=True)
+        else:
+            await state.update_data(onboarding_back_to_step3=False)
+    except Exception:
+        pass
 
     try:
         await callback.message.edit_media(
@@ -751,18 +989,33 @@ async def start_style_selection_handler(callback: CallbackQuery, state: FSMConte
     except TelegramBadRequest:
         await callback.message.edit_caption(
             caption=caption_text,
-            reply_markup=keyboards.style_selection_menu,
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboards.style_selection_menu
         )
 
     await callback.answer("Выберите акцент...")
 
 
 @router.callback_query(F.data.startswith("set_style:"))
-async def style_selector_handler(callback: CallbackQuery, state: FSMContext) -> None:
+async def style_selector_handler(callback: CallbackQuery, state: FSMContext, users_collection) -> None:
     style_code = callback.data.split(":")[1]
 
     await state.update_data(ai_style=style_code)
+
+    try:
+        if style_code == "default":
+            await users_collection.update_one(
+                {"user_id": callback.from_user.id, "type": "user_profile"},
+                {"$unset": {"preferred_style": ""}},
+                upsert=True
+            )
+        else:
+            await users_collection.update_one(
+                {"user_id": callback.from_user.id, "type": "user_profile"},
+                {"$set": {"preferred_style": style_code}},
+                upsert=True
+            )
+    except Exception as e:
+        logger.error(f"Ошибка сохранения preferred_style: {e}")
 
     if style_code == 'empathy':
         style_text = "🤗 Эмпатия и Поддержка"
@@ -772,26 +1025,65 @@ async def style_selector_handler(callback: CallbackQuery, state: FSMContext) -> 
         style_text = "Стандартный режим SFBT"
 
     confirmation_text = (
-        f"✅ **Акцент установлен!**\n\n"
-        f"Текущий стиль: **{style_text}**\n\n"
-        "Нажмите **'🎉 Начать разговор'**, чтобы начать сессию с этим акцентом."
+        f"✅ Акцент установлен!\n\n"
+        f"Текущий стиль: {style_text}\n\n"
+        "Нажмите '🎉 Начать разговор', чтобы начать сессию с этим акцентом."
+        if style_code != "default" else
+        "♻️ Акцент сброшен к стандартному режиму.\n\nНажмите '🎉 Начать разговор', чтобы продолжить."
     )
 
-    try:
-        await callback.message.edit_caption(
-            caption=confirmation_text,
-            reply_markup=keyboards.back_to_menu_keyboard,
-            parse_mode=ParseMode.MARKDOWN
-        )
-    except TelegramBadRequest as e:
-        await callback.message.answer(
-            text=confirmation_text,
-            reply_markup=keyboards.back_to_menu_keyboard,
-            parse_mode=ParseMode.MARKDOWN
-        )
-        logger.warning(f"Failed to edit message after style selection, sending new: {e}")
+    data = await state.get_data()
+    if data.get("onboarding_back_to_step3"):
+        try:
+            await callback.message.edit_caption(
+                caption=texts.ONBOARDING_STEP3,
+                reply_markup=keyboards.onboarding_step3
+            )
+        except TelegramBadRequest as e:
+            await callback.message.answer(
+                text=texts.ONBOARDING_STEP3,
+                reply_markup=keyboards.onboarding_step3
+            )
+            logger.warning(f"Failed to return to onboarding step3 after style selection: {e}")
+        await state.set_state(states.OnboardingStates.step3)
+        await state.update_data(onboarding_back_to_step3=False)
+        await callback.answer("Акцент сохранён для следующей сессии!")
+    else:
+        try:
+            await callback.message.edit_caption(
+                caption=confirmation_text,
+                reply_markup=keyboards.back_to_menu_keyboard
+            )
+        except TelegramBadRequest as e:
+            await callback.message.answer(
+                text=confirmation_text,
+                reply_markup=keyboards.back_to_menu_keyboard
+            )
+            logger.warning(f"Failed to edit message after style selection, sending new: {e}")
+        await callback.answer("Акцент сохранён!")
 
-    await callback.answer("Акцент сохранён!")
+
+@router.callback_query(F.data == "reset_style")
+async def reset_style_handler(callback: CallbackQuery, state: FSMContext, users_collection):
+    await state.update_data(ai_style="default")
+    try:
+        await users_collection.update_one(
+            {"user_id": callback.from_user.id, "type": "user_profile"},
+            {"$unset": {"preferred_style": ""}},
+            upsert=True
+        )
+    except Exception as e:
+        logger.error(f"Ошибка сброса preferred_style: {e}")
+
+    text = (
+        "♻️ Акцент сброшен к стандартному режиму.\n\n"
+        "Чтобы снова выбрать акцент, откройте '⚙️ Настройка акцента'."
+    )
+    try:
+        await callback.message.edit_caption(caption=text, reply_markup=keyboards.back_to_menu_keyboard)
+    except TelegramBadRequest:
+        await callback.message.answer(text, reply_markup=keyboards.back_to_menu_keyboard)
+    await callback.answer("Сброшено")
 
 
 async def _get_user_stats_async(user_id, users_collection):
@@ -827,11 +1119,10 @@ async def get_stats_handler(callback: CallbackQuery, users_collection, state: FS
 
     await callback.answer("Собираем вашу статистику...")
 
-    initial_caption = "⏳ **Начинаю сбор статистики...**"
+    initial_caption = "⏳ Начинаю сбор статистики..."
     new_media = InputMediaPhoto(
         media=photos.stats_photo,
-        caption=initial_caption,
-        parse_mode=ParseMode.MARKDOWN
+        caption=initial_caption
     )
 
     try:
@@ -842,8 +1133,7 @@ async def get_stats_handler(callback: CallbackQuery, users_collection, state: FS
     except TelegramBadRequest:
         message_to_edit = await callback.message.edit_caption(
             caption=initial_caption,
-            reply_markup=keyboards.back_to_menu_keyboard,
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboards.back_to_menu_keyboard
         )
 
     stop_event = asyncio.Event()
@@ -876,8 +1166,8 @@ async def get_stats_handler(callback: CallbackQuery, users_collection, state: FS
 
     if total_scores == 0:
         final_caption = (
-            "😔 **Статистика недоступна**\n\n"
-            "Вы еще не оценили свой прогресс ни разу. Начните с **'📈 Шкала Прогресса'**!"
+            "😔 Статистика недоступна\n\n"
+            "Вы еще не оценили свой прогресс ни разу. Начните с '📈 Шкала прогресса'!"
         )
     else:
         latest_score = numeric_scores[0]
@@ -891,10 +1181,10 @@ async def get_stats_handler(callback: CallbackQuery, users_collection, state: FS
             trend_icon = "⚖️"
 
             if diff_percent > 0.05:
-                trend_status = "заметно **улучшился**"
+                trend_status = "заметно улучшился"
                 trend_icon = "🚀"
             elif diff_percent < -0.05:
-                trend_status = "**снизился**"
+                trend_status = "снизился"
                 trend_icon = "⬇️"
             else:
                 trend_status = "стабилен"
@@ -903,28 +1193,26 @@ async def get_stats_handler(callback: CallbackQuery, users_collection, state: FS
             trend_line = f"Тенденция за последние {last_n} оценок: {trend_icon} Прогресс {trend_status}."
 
         final_caption = (
-            "📊 **Ваша Персональная Статистика**\n\n"
+            "📊 Ваша персональная статистика\n\n"
             "---"
-            "\n\n**✅ Оценки прогресса**"
-            f"\n- **Всего оценок:** `{total_scores}`"
-            f"\n- **Последняя оценка:** **{latest_score}/10** (от {latest_timestamp.strftime('%d.%m.%Y')})"
-            f"\n- **Средняя оценка:** **{average_score:.2f}/10**"
+            "\n\n✅ Оценки прогресса"
+            f"\n- Всего оценок: {total_scores}"
+            f"\n- Последняя оценка: {latest_score}/10 (от {latest_timestamp.strftime('%d.%m.%Y')})"
+            f"\n- Средняя оценка: {average_score:.2f}/10"
             f"\n\n{trend_line}"
             f"\n\n---"
-            f"\n\n**📝 Рекомендация:** Отмечайте, что изменилось между высоким и низким баллом, чтобы увидеть свои **точки роста**."
+            f"\n\n📝 Рекомендация: отмечайте, что изменилось между высоким и низким баллом, чтобы увидеть свои точки роста."
         )
     try:
         await message_to_edit.edit_caption(
             caption=final_caption,
-            reply_markup=keyboards.back_to_menu_keyboard,
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboards.back_to_menu_keyboard
         )
     except TelegramBadRequest as e:
         logger.error(f"Failed to edit final caption after stats generation: {e}")
         await callback.message.answer(
             final_caption,
-            reply_markup=keyboards.back_to_menu_keyboard,
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboards.back_to_menu_keyboard
         )
 
 async def get_total_user_count(users_collection) -> int:
@@ -986,23 +1274,104 @@ async def admin_panel(callback: CallbackQuery) -> None:
 
     await callback.message.edit_text(text=text, reply_markup=keyboards.admin_keyboard)
 
+async def _admin_metrics(users_collection):
+    now = datetime.now(timezone.utc)
+    d1 = now - timedelta(days=1)
+    d7 = now - timedelta(days=7)
+    d30 = now - timedelta(days=30)
+
+    async def count_distinct(query, field):
+        pipeline = [
+            {"$match": query},
+            {"$group": {"_id": f"${field}"}},
+            {"$count": "c"}
+        ]
+        res = await users_collection.aggregate(pipeline).to_list(length=1)
+        return (res[0]["c"] if res else 0)
+
+    total_users = await count_distinct({"type": "user_profile"}, "user_id")
+    dau = await count_distinct({"type": "user_profile", "last_active": {"$gte": d1}}, "user_id")
+    wau = await count_distinct({"type": "user_profile", "last_active": {"$gte": d7}}, "user_id")
+    mau = await count_distinct({"type": "user_profile", "last_active": {"$gte": d30}}, "user_id")
+
+    new_24h = await users_collection.count_documents({"type": "user_profile", "created_at": {"$gte": d1}})
+    new_7d = await users_collection.count_documents({"type": "user_profile", "created_at": {"$gte": d7}})
+
+    active_dialogs_24h = await count_distinct({"type": "user_message", "timestamp": {"$gte": d1}}, "user_id")
+
+    avg_msgs = await get_average_messages_per_user(users_collection)
+
+    pipeline_sessions = [
+        {"$match": {"type": "session_summary", "timestamp": {"$gte": d7}}},
+        {"$group": {"_id": None, "cnt": {"$sum": 1}, "avg_len": {"$avg": "$real_user_message_count"}}}
+    ]
+    sess = await users_collection.aggregate(pipeline_sessions).to_list(length=1)
+    sessions_7d = int(sess[0]["cnt"]) if sess else 0
+    avg_session_len = float(sess[0]["avg_len"]) if sess and sess[0]["avg_len"] is not None else 0.0
+
+    portraits_7d = await users_collection.count_documents({"type": "user_profile", "last_portrait_timestamp": {"$gte": d7}})
+
+    pipeline_avg7 = [
+        {"$match": {"type": "progress_score", "timestamp": {"$gte": d7}}},
+        {"$group": {"_id": None, "avg": {"$avg": "$score"}}}
+    ]
+    pipeline_prev7 = [
+        {"$match": {"type": "progress_score", "timestamp": {"$lt": d7, "$gte": d7 - timedelta(days=7)}}},
+        {"$group": {"_id": None, "avg": {"$avg": "$score"}}}
+    ]
+    a7 = await users_collection.aggregate(pipeline_avg7).to_list(length=1)
+    p7 = await users_collection.aggregate(pipeline_prev7).to_list(length=1)
+    avg_score_7d = float(a7[0]["avg"]) if a7 and a7[0]["avg"] is not None else 0.0
+    prev_avg_score_7d = float(p7[0]["avg"]) if p7 and p7[0]["avg"] is not None else 0.0
+    trend = 0.0
+    if prev_avg_score_7d > 0:
+        trend = (avg_score_7d - prev_avg_score_7d) / prev_avg_score_7d
+
+    onboard_total = total_users if total_users > 0 else 1
+    onboard_completed = await users_collection.count_documents({"type": "user_profile", "onboarding_completed": True})
+    onboarding_conv = onboard_completed / onboard_total
+
+    return {
+        "total_users": total_users,
+        "dau": dau,
+        "wau": wau,
+        "mau": mau,
+        "new_24h": new_24h,
+        "new_7d": new_7d,
+        "active_dialogs_24h": active_dialogs_24h,
+        "avg_msgs": avg_msgs,
+        "sessions_7d": sessions_7d,
+        "avg_session_len": avg_session_len,
+        "portraits_7d": portraits_7d,
+        "avg_score_7d": avg_score_7d,
+        "trend": trend,
+        "onboarding_conv": onboarding_conv,
+    }
+
+
 @router.callback_query(F.data == "admin_stats", config.IsAdmin())
 async def admin_stats(callback: CallbackQuery, users_collection) -> None:
-    unique_users = await get_total_user_count(users_collection=users_collection)
-    average_messages_per_user = await get_average_messages_per_user(users_collection=users_collection)
+    m = await _admin_metrics(users_collection)
+    avg = m["avg_msgs"]["average_messages_per_user"]
+    total_messages = m["avg_msgs"]["total_messages"]
 
-    average = average_messages_per_user.get("average_messages_per_user")
-    active_users = average_messages_per_user.get("unique_users")
-    total_messages = average_messages_per_user.get("total_messages")
+    trend_icon = "⚖️"
+    if m["trend"] > 0.05:
+        trend_icon = "🚀"
+    elif m["trend"] < -0.05:
+        trend_icon = "⬇️"
 
     stats = (
-        "📊 Статистика InnerTalk\n"
-        "\n"
-        f"👥 Общий Охват: {unique_users:,} (Уникальных ID)\n"
-        f"💬 Всего Сообщений: {total_messages:,}\n"
-        "\n"
-        f"🟢 Активные Пользователи: {active_users:,}\n"
-        f"✨ Средняя Активность: {average:.2f} сообщений/пользователя\n"
+        "📊 Статистика InnerTalk\n\n"
+        f"👥 Пользователи: {m['total_users']:,}\n"
+        f"➕ Новые: 24ч {m['new_24h']:,} • 7д {m['new_7d']:,}\n\n"
+        f"🟢 Активность: DAU {m['dau']:,} • WAU {m['wau']:,} • MAU {m['mau']:,}\n"
+        f"💬 Сообщений всего: {total_messages:,} • в среднем: {avg:.2f}/польз.\n"
+        f"🗣️ Активные диалоги (24ч): {m['active_dialogs_24h']:,}\n\n"
+        f"🧵 Сессии (7д): {m['sessions_7d']:,} • средняя длина: {m['avg_session_len']:.1f} сообщений\n"
+        f"🧠 Портретов (7д): {m['portraits_7d']:,}\n"
+        f"📈 Средний балл (7д): {m['avg_score_7d']:.2f} ({trend_icon} тренд)\n\n"
+        f"🎯 Онбординг завершили: {m['onboarding_conv']*100:.1f}%\n"
     )
 
     await callback.message.edit_text(text=stats, reply_markup=keyboards.back_to_admin_panel)
@@ -1018,11 +1387,13 @@ async def send_single_message(bot, user_id: int, text: str, **kwargs):
 async def get_user_ids(users_collection) -> list[int]:
     projection = {"user_id": 1, "_id": 0}
 
-    cursor = users_collection.find(projection)
+    cursor = users_collection.find({}, projection)
 
     user_ids = []
     async for doc in cursor:
-        user_ids.append(doc.get("user_id"))
+        user_id = doc.get("user_id")
+        if isinstance(user_id, int):
+            user_ids.append(user_id)
 
     return user_ids
 
@@ -1033,57 +1404,184 @@ async def start_mass_mailing(bot, text: str, admin_id: int, users_collection):
     users_sent_count = 0
 
     for user_id in user_ids:
-        asyncio.create_task(send_single_message(bot, user_id, text))
+        await send_single_message(bot, user_id, text)
         users_sent_count += 1
 
     await bot.send_message(admin_id,
-                           f"✅ Рассылка успешно инициирована для {users_sent_count} пользователей. "
+                           f"✅ Рассылка успешно инициирована для {users_sent_count} пользователей."
                            f"Остаток процесса будет выполнен в фоновом режиме.", reply_markup=keyboards.back_to_admin_panel)
 
 
 @router.callback_query(F.data == "admin_news", config.IsAdmin())
 async def process_mailing_start(callback: CallbackQuery, state: FSMContext, users_collection):
-    await callback.message.edit_text("Введите текст для рассылки (поддерживается Markdown):")
+    await callback.message.edit_text("Введите текст для рассылки:")
     await state.set_state(states.MailingStates.waiting_for_text)
     await callback.answer()
 
 
-@router.message(states.MailingStates.waiting_for_text, F.text)
-async def process_mailing_text(message: Message, state: FSMContext, users_collection):
-    await state.update_data(mailing_text=message.text)
-
-    confirmation_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(text="✅ Подтвердить", callback_data="mailing_confirm"),
-            InlineKeyboardButton(text="❌ Отменить", callback_data="mailing_cancel")
-        ]
-    ])
-
-    await message.answer(
-        "Подтверждение:\n\n"
-        f"{message.text}\n\n"
-        "Вы уверены, что хотите запустить рассылку?",
-        reply_markup=confirmation_keyboard
+@router.callback_query(F.data.startswith("mail_seg:"), config.IsAdmin())
+async def mailing_choose_segment(callback: CallbackQuery, state: FSMContext):
+    seg = callback.data.split(":")[1]
+    await state.update_data(mailing_segment=seg)
+    data = await state.get_data()
+    text = data.get("mailing_text", "")
+    preview = (
+        "✉️ Предпросмотр\n\n"
+        f"Сегмент: {seg}\n\n"
+        f"---\n{text}\n---\n\n"
+        "Запустить рассылку?"
     )
     await state.set_state(states.MailingStates.waiting_for_confirmation)
-
-
-@router.callback_query(F.data == "mailing_confirm", states.MailingStates.waiting_for_confirmation)
-async def process_mailing_confirm(callback: CallbackQuery, state: FSMContext, users_collection):
-    data = await state.get_data()
-    mailing_text = data.get('mailing_text')
-    admin_id = callback.from_user.id
-
-    await state.clear()
-
-    asyncio.create_task(start_mass_mailing(callback.bot, mailing_text, admin_id, users_collection))
-
-    await callback.message.edit_text("✅ Рассылка запущена! Ждите отчета о завершении.")
+    try:
+        await callback.message.edit_text(preview, reply_markup=keyboards.mailing_confirm_keyboard)
+    except TelegramBadRequest:
+        await callback.message.answer(preview, reply_markup=keyboards.mailing_confirm_keyboard)
     await callback.answer()
 
 
-@router.callback_query(F.data == "mailing_cancel", states.MailingStates.waiting_for_confirmation)
-async def process_mailing_cancel(callback: CallbackQuery, state: FSMContext):
+@router.callback_query(F.data == "mail_change_segment", config.IsAdmin())
+async def mailing_change_segment(callback: CallbackQuery, state: FSMContext):
+    await state.set_state(states.MailingStates.waiting_for_text)
+    await callback.message.edit_text("Выберите сегмент получателей:", reply_markup=keyboards.mailing_segments_keyboard)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "mail_cancel", config.IsAdmin())
+async def mailing_cancel(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     await callback.message.edit_text("❌ Рассылка отменена.", reply_markup=keyboards.back_to_admin_panel)
+    await callback.answer()
+
+
+async def _get_blacklisted_ids(users_collection) -> set[int]:
+    cur = users_collection.find({"type": "blacklisted"}, {"user_id": 1, "_id": 0})
+    res = set()
+    async for d in cur:
+        if isinstance(d.get("user_id"), int):
+            res.add(d["user_id"])
+    return res
+
+
+async def _add_to_blacklist(users_collection, user_id: int):
+    try:
+        await users_collection.update_one(
+            {"type": "blacklisted", "user_id": user_id},
+            {"$set": {"type": "blacklisted", "user_id": user_id}},
+            upsert=True
+        )
+    except Exception as e:
+        logger.error(f"Не удалось добавить в blacklist {user_id}: {e}")
+
+
+async def _segment_user_ids(users_collection, seg: str) -> list[int]:
+    bl = await _get_blacklisted_ids(users_collection)
+    ids: set[int] = set()
+    now = datetime.now(timezone.utc)
+    if seg == "all":
+        cur = users_collection.find({"type": "user_profile"}, {"user_id": 1, "_id": 0})
+        async for d in cur:
+            uid = d.get("user_id")
+            if isinstance(uid, int):
+                ids.add(uid)
+    elif seg == "active7":
+        since = now - timedelta(days=7)
+        cur = users_collection.find({"type": "user_profile", "last_active": {"$gte": since}}, {"user_id": 1, "_id": 0})
+        async for d in cur:
+            uid = d.get("user_id")
+            if isinstance(uid, int):
+                ids.add(uid)
+    elif seg == "has_portrait":
+        cur = users_collection.find({"type": "user_profile", "last_portrait_timestamp": {"$exists": True}}, {"user_id": 1, "_id": 0})
+        async for d in cur:
+            uid = d.get("user_id")
+            if isinstance(uid, int):
+                ids.add(uid)
+    elif seg == "scores3":
+        pipeline = [
+            {"$match": {"type": "progress_score"}},
+            {"$group": {"_id": "$user_id", "cnt": {"$sum": 1}}},
+            {"$match": {"cnt": {"$gte": 3}}},
+            {"$project": {"user_id": "$_id", "_id": 0}}
+        ]
+        async for d in users_collection.aggregate(pipeline):
+            uid = d.get("user_id")
+            if isinstance(uid, int):
+                ids.add(uid)
+
+    return [i for i in ids if i not in bl]
+
+
+async def _send_with_retry(bot, user_id: int, text: str, *, retries: int = 3):
+    delay = config.RATE_LIMIT_DELAY
+    attempt = 0
+    while attempt < retries:
+        try:
+            await bot.send_message(user_id, text)
+            await asyncio.sleep(delay)
+            return "ok"
+        except Exception as e:
+            s = str(e).lower()
+            if "forbidden" in s or "blocked" in s or "403" in s:
+                return "blocked"
+            transient = any(x in s for x in ["429", "timeout", "temporar", "unavailable", "reset", "connection", "rate", "5"]) and "403" not in s
+            attempt += 1
+            if not transient or attempt >= retries:
+                return f"err:{e}"
+            await asyncio.sleep(0.5 * (2 ** (attempt - 1)))
+
+
+async def start_mass_mailing(bot, text: str, admin_id: int, users_collection, seg: str):
+    user_ids = await _segment_user_ids(users_collection, seg)
+    total = len(user_ids)
+    if total == 0:
+        await bot.send_message(admin_id, "Нет пользователей в выбранном сегменте.", reply_markup=keyboards.back_to_admin_panel)
+        return
+
+    sem = asyncio.Semaphore(20)
+    results = {"ok": 0, "blocked": 0, "errors": 0}
+
+    async def worker(uid: int):
+        async with sem:
+            res = await _send_with_retry(bot, uid, text)
+            if res == "ok":
+                results["ok"] += 1
+            elif res == "blocked":
+                results["blocked"] += 1
+                await _add_to_blacklist(users_collection, uid)
+            else:
+                results["errors"] += 1
+
+    await asyncio.gather(*(worker(uid) for uid in user_ids))
+
+    try:
+        await users_collection.insert_one({
+            "type": "mailing_log",
+            "text": text,
+            "segment": seg,
+            "timestamp": datetime.now(timezone.utc),
+            "total": total,
+            **results
+        })
+    except Exception as e:
+        logger.error(f"Не удалось сохранить лог рассылки: {e}")
+
+    summary = (
+        "✅ Рассылка завершена\n\n"
+        f"Сегмент: {seg}\n"
+        f"Всего: {total}\n"
+        f"Доставлено: {results['ok']}\n"
+        f"Заблокировали: {results['blocked']}\n"
+        f"Ошибок: {results['errors']}\n"
+    )
+    await bot.send_message(admin_id, summary, reply_markup=keyboards.back_to_admin_panel)
+
+
+@router.callback_query(F.data == "mail_send", config.IsAdmin())
+async def mailing_send(callback: CallbackQuery, state: FSMContext, users_collection):
+    data = await state.get_data()
+    text = data.get("mailing_text", "")
+    seg = data.get("mailing_segment", "all")
+    await state.clear()
+    asyncio.create_task(start_mass_mailing(callback.bot, text, callback.from_user.id, users_collection, seg))
+    await callback.message.edit_text("🚀 Рассылка запущена. Итоги пришлю по завершении.")
     await callback.answer()

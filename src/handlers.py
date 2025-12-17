@@ -12,7 +12,6 @@ from . import texts
 from . import states
 from google.genai import types
 from aiogram.types import Message
-from aiogram.enums import ParseMode
 
 logger = logging.getLogger(__name__)
 
@@ -23,11 +22,16 @@ async def _save_user_profile_async(collection, user_id, username, first_name):
     try:
         await collection.update_one(
             {"user_id": user_id, "type": "user_profile"},
-            {"$set": {
-                "username": username,
-                "first_name": first_name,
-                "last_active": datetime.now(timezone.utc)
-            }},
+            {
+                "$set": {
+                    "username": username,
+                    "first_name": first_name,
+                    "last_active": datetime.now(timezone.utc)
+                },
+                "$setOnInsert": {
+                    "created_at": datetime.now(timezone.utc)
+                }
+            },
             upsert=True
         )
     except Exception as e:
@@ -53,20 +57,31 @@ async def start_handler(message: Message, state: FSMContext, users_collection) -
         user.first_name
     ))
 
+    user_profile = await users_collection.find_one({"user_id": user.id, "type": "user_profile"})
+    onboarding_completed = bool(user_profile.get("onboarding_completed")) if user_profile else False
+
+    if not onboarding_completed:
+        await state.set_state(states.OnboardingStates.step1)
+        await message.answer_photo(
+            photo=photos.main_photo,
+            caption=texts.ONBOARDING_STEP1,
+            reply_markup=keyboards.onboarding_step1
+        )
+        return
+
     caption_text = texts.MAIN_MENU_CAPTION
     await message.answer_photo(
         photo=photos.main_photo,
         caption=caption_text,
-        reply_markup=keyboards.main_menu,
-        parse_mode=ParseMode.MARKDOWN)
+        reply_markup=keyboards.main_menu)
 
 
 async def update_thinking_message(bot, chat_id: int, message_id: int, stop_event: asyncio.Event):
     animation_texts = [
-        "**🔍 Анализирую** ваш диалог...",
-        "**🧠 Синтезирую** информацию...",
-        "**💬 Формулирую** ответ...",
-        "**⚙️ Вычисляю** оптимальный совет..."
+        "🔍 Анализирую ваш диалог...",
+        "🧠 Синтезирую информацию...",
+        "💬 Формулирую ответ...",
+        "⚙️ Вычисляю оптимальный совет..."
     ]
     delay = 1.0
 
@@ -80,8 +95,7 @@ async def update_thinking_message(bot, chat_id: int, message_id: int, stop_event
                     await bot.edit_message_text(
                         chat_id=chat_id,
                         message_id=message_id,
-                        text=text_frame,
-                        parse_mode=ParseMode.MARKDOWN
+                        text=text_frame
                     )
                 except TelegramBadRequest as e:
                     if "message is not modified" not in str(e):
@@ -97,13 +111,12 @@ async def update_thinking_message(bot, chat_id: int, message_id: int, stop_event
 @router.message(F.content_type != "text", StateFilter(states.SessionStates.in_session))
 async def non_text_in_session_handler(message: Message) -> None:
     await message.answer(
-        "🚫 **Ошибка:** Я — текстовый ИИ-психолог и могу обрабатывать **только текстовые сообщения**.",
-        parse_mode=ParseMode.MARKDOWN
+        "🚫 Ошибка: Я — текстовый ИИ‑психолог и могу обрабатывать только текстовые сообщения."
     )
 
 @router.message(StateFilter(states.SessionStates.in_session))
 async def echo_handler(message: Message, state: FSMContext, generate_content_sync_func, users_collection, bot,
-                       gemini_client, count_tokens_sync_func) -> None:
+                       gemini_client, count_tokens_sync_func, openai_client=None, generate_openai_func=None, alert_func=None) -> None:
     user_text = message.text
     user_id = message.from_user.id
     chat_id = message.chat.id
@@ -201,13 +214,10 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         for item in dialog_messages_only
     ]
 
-    loop = asyncio.get_event_loop()
     total_token_count = 0
 
     try:
-        token_response = await loop.run_in_executor(
-            None,
-            count_tokens_sync_func,
+        token_response = await count_tokens_sync_func(
             gemini_client,
             'gemini-2.5-flash',
             new_contents_gemini,
@@ -219,12 +229,16 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
 
     if total_token_count >= config.MAX_TOKENS_PER_SESSION:
         await message.answer(
-            f"🕰️ **Лимит сессии:** Общий объем диалога ({total_token_count} токенов) "
-            f"достиг максимума (~{config.MAX_TOKENS_PER_SESSION} токенов). \n"
-            f"Для завершения и сохранения конспекта, пожалуйста, нажмите 'Закончить сессию'.",
-            reply_markup=keyboards.end_session_menu,
-            parse_mode=ParseMode.MARKDOWN
+            f"🕰️ Лимит сессии: общий объем диалога ({total_token_count} токенов) "
+            f"достиг максимума (~{config.MAX_TOKENS_PER_SESSION} токенов).\n"
+            f"Для завершения и сохранения конспекта нажмите 'Закончить сессию'.",
+            reply_markup=keyboards.end_session_menu
         )
+        if alert_func:
+            try:
+                asyncio.create_task(alert_func(bot, f"Пользователь {user_id} достиг лимита токенов сессии ({total_token_count}/{config.MAX_TOKENS_PER_SESSION}).", key="session_tokens_limit"))
+            except Exception:
+                pass
         return
 
     thinking_message = await message.answer("...")
@@ -241,10 +255,13 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
 
     ai_response = "Извините, модель поставщика на данный момент перегружена. Попробуйте повторить последнее сообщение! Если ошибка повторяется, завершите сессию."
 
+    def _is_resource_exhausted(err: Exception) -> bool:
+        msg = str(err).lower()
+        return any(x in msg for x in ["resource exhausted", "quota", "exceed", "rate", "insufficient", "429", "limit"]) and "forbidden" not in msg
+
+    gemini_failed_exc: Exception | None = None
     try:
-        ai_response_obj = await loop.run_in_executor(
-            None,
-            generate_content_sync_func,
+        ai_response_obj = await generate_content_sync_func(
             gemini_client,
             'gemini-2.5-flash',
             new_contents_gemini,
@@ -252,7 +269,30 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         )
         ai_response = ai_response_obj.text
     except Exception as e:
+        gemini_failed_exc = e
         logger.error(f"Gemini API call error: {e}")
+
+        if openai_client and generate_openai_func and _is_resource_exhausted(e):
+            if alert_func:
+                try:
+                    asyncio.create_task(alert_func(bot, f"Срабатывание фоллбэка: Gemini исчерпал ресурс, переключаемся на OpenAI (user {user_id}).", key="fallback_gemini_openai"))
+                except Exception:
+                    pass
+            for model in ("gpt-4.1", "gpt-5-chat-latest"):
+                try:
+                    joined_dialog = "\n".join([f"{m['role']}: {m['content']}" for m in dialog_messages_only])
+                    ai_text = await generate_openai_func(openai_client, model, joined_dialog, final_system_prompt)
+                    if ai_text and ai_text.strip():
+                        ai_response = ai_text
+                        break
+                except Exception as oe:
+                    logger.warning(f"OpenAI fallback '{model}' failed: {oe}")
+            else:
+                if alert_func:
+                    try:
+                        asyncio.create_task(alert_func(bot, f"Неудачный фоллбэк: Gemini и OpenAI (4.1/5-chat-latest) не ответили (user {user_id}).", key="fallback_failed"))
+                    except Exception:
+                        pass
 
     stop_event.set()
 
@@ -266,15 +306,13 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
     try:
         await thinking_message.edit_text(
             text=ai_response,
-            reply_markup=keyboards.end_session_menu,
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboards.end_session_menu
         )
     except TelegramBadRequest as e:
         logger.warning(f"Failed to edit thinking message: {e}")
         final_message = await message.answer(
             ai_response,
-            reply_markup=keyboards.end_session_menu,
-            parse_mode=ParseMode.MARKDOWN
+            reply_markup=keyboards.end_session_menu
         )
 
     current_time = datetime.now(timezone.utc)
@@ -323,6 +361,28 @@ async def start_admin(message: Message) -> None:
 
     await message.answer(text=text, reply_markup=keyboards.admin_keyboard)
 
+
+@router.message(StateFilter(states.MailingStates.waiting_for_text), config.IsAdmin())
+async def mailing_got_text(message: Message, state: FSMContext):
+    text = message.text or ""
+    await state.update_data(mailing_text=text, mailing_segment=None)
+
+    preview = (
+        "✉️ Предпросмотр рассылки\n\n"
+        "Текст сообщения будет отправлен выбранному сегменту пользователей.\n\n"
+        f"---\n{text}\n---\n\n"
+        "Выберите сегмент получателей:"
+    )
+    await message.answer(preview, reply_markup=keyboards.mailing_segments_keyboard)
+
+
+@router.message(StateFilter(states.MailingStates.waiting_for_confirmation), config.IsAdmin())
+async def mailing_waiting_confirmation(message: Message):
+    await message.answer("Используйте кнопки ниже для продолжения.")
+
 @router.message(F.content_type != "text")
 async def non_text_idle_handler(message: Message) -> None:
-    print(message.photo[-1].file_id)
+    if message.photo:
+        print(message.photo[-1].file_id)
+    else:
+        print(f"Non-text content received: {message.content_type}")

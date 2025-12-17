@@ -10,3 +10,8 @@ class MoodStates(StatesGroup):
 class MailingStates(StatesGroup):
     waiting_for_text = State()
     waiting_for_confirmation = State()
+
+class OnboardingStates(StatesGroup):
+    step1 = State()
+    step2 = State()
+    step3 = State()
