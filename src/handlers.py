@@ -1,5 +1,6 @@
 import logging
 import asyncio
+import time
 from datetime import datetime, timezone
 from aiogram.exceptions import TelegramBadRequest
 from aiogram import Router, F
@@ -16,6 +17,33 @@ from aiogram.types import Message
 logger = logging.getLogger(__name__)
 
 router = Router()
+
+_GEMINI_BACKOFF_UNTIL: float | None = None
+
+def _gemini_backoff_seconds() -> int:
+    try:
+        return int(getattr(config, "GEMINI_BACKOFF_SEC", 300))
+    except Exception:
+        return 300
+
+def _is_gemini_in_backoff() -> bool:
+    global _GEMINI_BACKOFF_UNTIL
+    if _GEMINI_BACKOFF_UNTIL is None:
+        return False
+    now = time.time()
+    if now < _GEMINI_BACKOFF_UNTIL:
+        return True
+    _GEMINI_BACKOFF_UNTIL = None
+    return False
+
+def _set_gemini_backoff(seconds: int | None = None) -> None:
+    global _GEMINI_BACKOFF_UNTIL
+    ttl = seconds if seconds is not None else _gemini_backoff_seconds()
+    _GEMINI_BACKOFF_UNTIL = time.time() + max(1, int(ttl))
+
+def _clear_gemini_backoff() -> None:
+    global _GEMINI_BACKOFF_UNTIL
+    _GEMINI_BACKOFF_UNTIL = None
 
 async def _save_user_profile_async(collection, user_id, username, first_name):
     """Фоновое сохранение или обновление профиля пользователя в MongoDB."""
@@ -256,39 +284,52 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         return any(x in msg for x in substrings) and "forbidden" not in msg
 
     gemini_failed_exc: Exception | None = None
-    try:
-        ai_response_obj = await generate_content_sync_func(
-            gemini_client,
-            'gemini-2.5-flash',
-            new_contents_gemini,
-            final_system_prompt
-        )
-        ai_response = ai_response_obj.text
-    except Exception as e:
-        gemini_failed_exc = e
-        logger.error(f"Gemini API call error: {e}")
 
-        if openai_client and generate_openai_func and _is_resource_exhausted(e):
-            if alert_func:
-                try:
-                    asyncio.create_task(alert_func(bot, f"Срабатывание фоллбэка: Gemini недоступен или исчерпал ресурс, переключаемся на OpenAI (user {user_id}).", key="fallback_gemini_openai"))
-                except Exception:
-                    pass
-            for model in ("gpt-4.1", "gpt-5-chat-latest"):
-                try:
-                    joined_dialog = "\n".join([f"{m['role']}: {m['content']}" for m in dialog_messages_only])
-                    ai_text = await generate_openai_func(openai_client, model, joined_dialog, final_system_prompt)
-                    if ai_text and ai_text.strip():
-                        ai_response = ai_text
-                        break
-                except Exception as oe:
-                    logger.warning(f"OpenAI fallback '{model}' failed: {oe}")
-            else:
-                if alert_func:
-                    try:
-                        asyncio.create_task(alert_func(bot, f"Неудачный фоллбэк: Gemini и OpenAI (4.1/5-chat-latest) не ответили (user {user_id}).", key="fallback_failed"))
-                    except Exception:
-                        pass
+    async def _call_openai_fallback(reason: str | None = None):
+        nonlocal ai_response
+        if alert_func:
+            try:
+                msg = "Срабатывание фоллбэка: переключаемся на OpenAI"
+                if reason:
+                    msg += f" ({reason})"
+                asyncio.create_task(alert_func(bot, f"{msg} (user {user_id}).", key="fallback_gemini_openai"))
+            except Exception:
+                pass
+        for model in ("gpt-4.1", "gpt-5-chat-latest"):
+            try:
+                joined_dialog = "\n".join([f"{m['role']}: {m['content']}" for m in dialog_messages_only])
+                ai_text = await generate_openai_func(openai_client, model, joined_dialog, final_system_prompt)
+                if ai_text and ai_text.strip():
+                    ai_response = ai_text
+                    return True
+            except Exception as oe:
+                logger.warning(f"OpenAI fallback '{model}' failed: {oe}")
+        if alert_func:
+            try:
+                asyncio.create_task(alert_func(bot, f"Неудачный фоллбэка: ни одна из моделей OpenAI (4.1/5-chat-latest) не ответила (user {user_id}).", key="fallback_failed"))
+            except Exception:
+                pass
+        return False
+
+    if openai_client and generate_openai_func and _is_gemini_in_backoff():
+        await _call_openai_fallback(reason=f"активен backoff Gemini, повторная попытка через ~{max(1, int((_GEMINI_BACKOFF_UNTIL - time.time()) if _GEMINI_BACKOFF_UNTIL else 0))}с")
+    else:
+        try:
+            ai_response_obj = await generate_content_sync_func(
+                gemini_client,
+                'gemini-2.5-flash',
+                new_contents_gemini,
+                final_system_prompt
+            )
+            ai_response = ai_response_obj.text
+            _clear_gemini_backoff()
+        except Exception as e:
+            gemini_failed_exc = e
+            logger.error(f"Gemini API call error: {e}")
+
+            if openai_client and generate_openai_func and _is_resource_exhausted(e):
+                _set_gemini_backoff()
+                await _call_openai_fallback(reason="Gemini недоступен или исчерпан ресурс")
 
     stop_event.set()
 
