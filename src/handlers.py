@@ -128,24 +128,6 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
 
     current_data = await state.get_data()
     ai_style = current_data.get("ai_style", "default")
-    real_user_message_count = current_data.get("real_user_message_count", 0) + 1
-
-    is_miracle_asked = current_data.get('miracle_question_asked', False)
-    is_scaling_asked = current_data.get('scaling_question_asked', False)
-
-    if real_user_message_count == 2 and not is_miracle_asked:
-        logger.info(f"User {user_id} reached 2 messages. Initiating Miracle Question.")
-        await state.update_data(initiate_miracle_question=True, miracle_question_asked=True)
-
-    elif real_user_message_count == 5 and not is_miracle_asked and not is_scaling_asked:
-        logger.info(f"User {user_id} reached 5 messages. Initiating Scaling Question.")
-        await state.update_data(initiate_scaling_question=True, scaling_question_asked=True)
-
-    else:
-        if current_data.get('initiate_miracle_question'):
-            await state.update_data(initiate_miracle_question=False)
-        if current_data.get('initiate_scaling_question'):
-            await state.update_data(initiate_scaling_question=False)
 
     style_modifier = ""
     if ai_style == "empathy":
@@ -188,19 +170,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
     if len(dialog_messages_only) > max_msgs:
         dialog_messages_only = dialog_messages_only[-max_msgs:]
 
-    updated_data = await state.get_data()
-
-    miracle_prompt_modifier = ""
-    if updated_data.get('initiate_miracle_question'):
-        miracle_prompt_modifier = "FSMContext содержит ключ 'initiate_miracle_question'. Немедленно выполни УПРАЖНЕНИЕ: Вопрос о Чуде, строго по инструкции 5."
-
-    scaling_prompt_modifier = ""
-    if updated_data.get('initiate_scaling_question'):
-        scaling_prompt_modifier = "FSMContext содержит ключ 'initiate_scaling_question'. Немедленно выполни УПРАЖНЕНИЕ: Шкала Компетентности, строго по инструкции 6."
-
-    full_modifier = f"{style_modifier}\n\n{miracle_prompt_modifier}\n\n{scaling_prompt_modifier}"
-
-    base_prompt_with_style = f"{config.SYSTEM_PROMPT_TEXT}\n\n{full_modifier}"
+    base_prompt_with_style = f"{config.SYSTEM_PROMPT_TEXT}\n\n{style_modifier}"
 
     if is_summary_present and summary_content_dict:
         final_system_prompt = f"{summary_content_dict['content']}\n\n{base_prompt_with_style}"
@@ -260,7 +230,30 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
 
     def _is_resource_exhausted(err: Exception) -> bool:
         msg = str(err).lower()
-        return any(x in msg for x in ["resource exhausted", "quota", "exceed", "rate", "insufficient", "429", "limit"]) and "forbidden" not in msg
+        substrings = [
+            "resource exhausted",
+            "quota",
+            "exceed",
+            "rate",
+            "insufficient",
+            "limit",
+            "429",
+            "503",
+            "502",
+            "504",
+            "service unavailable",
+            "temporarily unavailable",
+            "unavailable",
+            "overloaded",
+            "model is overloaded",
+            "bad gateway",
+            "gateway timeout",
+            "deadline exceeded",
+            "connection reset",
+            "upstream",
+            "retry later",
+        ]
+        return any(x in msg for x in substrings) and "forbidden" not in msg
 
     gemini_failed_exc: Exception | None = None
     try:
@@ -278,7 +271,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         if openai_client and generate_openai_func and _is_resource_exhausted(e):
             if alert_func:
                 try:
-                    asyncio.create_task(alert_func(bot, f"Срабатывание фоллбэка: Gemini исчерпал ресурс, переключаемся на OpenAI (user {user_id}).", key="fallback_gemini_openai"))
+                    asyncio.create_task(alert_func(bot, f"Срабатывание фоллбэка: Gemini недоступен или исчерпал ресурс, переключаемся на OpenAI (user {user_id}).", key="fallback_gemini_openai"))
                 except Exception:
                     pass
             for model in ("gpt-4.1", "gpt-5-chat-latest"):
