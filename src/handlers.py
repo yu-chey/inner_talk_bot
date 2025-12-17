@@ -184,6 +184,9 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
 
     user_message_content_dict = {"role": "user", "content": user_text}
     dialog_messages_only.append(user_message_content_dict)
+    max_msgs = getattr(config, "MAX_DIALOG_MESSAGES", 20)
+    if len(dialog_messages_only) > max_msgs:
+        dialog_messages_only = dialog_messages_only[-max_msgs:]
 
     updated_data = await state.get_data()
 
@@ -333,6 +336,8 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
     }))
 
     dialog_messages_only.append({"role": "model", "content": ai_response})
+    if len(dialog_messages_only) > max_msgs:
+        dialog_messages_only = dialog_messages_only[-max_msgs:]
 
     history_to_save = dialog_messages_only
 
