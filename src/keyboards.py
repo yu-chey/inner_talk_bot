@@ -3,7 +3,8 @@ from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 main_menu = InlineKeyboardMarkup(
     inline_keyboard=[
         [
-            InlineKeyboardButton(text='🎉 Начать разговор', callback_data='start_session')
+            InlineKeyboardButton(text='🎉 Начать разговор', callback_data='start_session'),
+            InlineKeyboardButton(text='🧪 Тесты', callback_data='tests_menu')
         ],
         [
             InlineKeyboardButton(text='🧠 Анализ личности', callback_data='get_portrait'),
@@ -12,9 +13,6 @@ main_menu = InlineKeyboardMarkup(
         [
             InlineKeyboardButton(text='📈 Дневник эмоций', callback_data='start_progress_scale'),
             InlineKeyboardButton(text='📊 Мой прогресс', callback_data='get_user_stats')
-        ],
-        [
-            InlineKeyboardButton(text='🧪 Тесты', callback_data='tests_menu')
         ],
         [
             InlineKeyboardButton(text='ℹ️ О нас', callback_data='about_us'),
