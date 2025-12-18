@@ -15,3 +15,10 @@ class OnboardingStates(StatesGroup):
     step1 = State()
     step2 = State()
     step3 = State()
+
+
+class TestStates(StatesGroup):
+    disclaimer = State()
+    picking_test = State()
+    picking_length = State()
+    in_test = State()

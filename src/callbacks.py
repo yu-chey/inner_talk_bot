@@ -13,6 +13,7 @@ from . import texts
 from . import states
 from . import config
 from .handlers import _save_to_db_async
+from . import tests_data
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +127,163 @@ async def onboarding_next_1(callback: CallbackQuery, state: FSMContext):
         await callback.message.edit_caption(caption=texts.ONBOARDING_STEP2, reply_markup=keyboards.onboarding_step2)
     await state.set_state(states.OnboardingStates.step2)
     await callback.answer()
+
+
+def _likert_options() -> list[tuple[str, str]]:
+    return [("1", "test_answer:1"), ("2", "test_answer:2"), ("3", "test_answer:3"), ("4", "test_answer:4"), ("5", "test_answer:5")]
+
+
+def _mbti_options() -> list[tuple[str, str]]:
+    return [("A", "test_answer:A"), ("B", "test_answer:B")]
+
+
+async def _edit_prev_remove_end(bot, chat_id: int, message_id: int, q) -> None:
+    try:
+        if q.qtype == "likert":
+            kb = keyboards.question_keyboard(_likert_options(), show_end=False)
+        elif q.qtype == "mbti_ab":
+            kb = keyboards.question_keyboard(_mbti_options(), show_end=False)
+        else:
+            kb = None
+        if kb:
+            await bot.edit_message_reply_markup(chat_id=chat_id, message_id=message_id, reply_markup=kb)
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e).lower():
+            logger.debug(f"edit prev remove end failed: {e}")
+    except Exception as e:
+        logger.debug(f"edit prev remove end failed: {e}")
+
+
+async def _send_question(callback: CallbackQuery, state: FSMContext, *, first: bool = False) -> None:
+    data = await state.get_data()
+    test_id: str = data.get("test_id")
+    version: str = data.get("version")
+    idx: int = data.get("current_index", 0)
+    questions = tests_data.TESTS[test_id]["versions"][version]
+    total = len(questions)
+    q = questions[idx]
+
+    prev_msg_id = data.get("last_question_message_id")
+    if not first and prev_msg_id:
+        await _edit_prev_remove_end(callback.message.bot, callback.message.chat.id, prev_msg_id, q=questions[idx-1])
+
+    if q.qtype == "likert":
+        options = _likert_options()
+        hint = f"\n\n{texts.TESTS_LIKERT_HINT}"
+    else:
+        options = _mbti_options()
+        hint = ""
+    kb = keyboards.question_keyboard(options, show_end=True)
+
+    sent = await callback.message.answer(f"Вопрос {idx+1}/{total}:\n{q.text}{hint}", reply_markup=kb)
+    await state.update_data(last_question_message_id=sent.message_id)
+
+
+@router.callback_query(F.data == "tests_menu")
+async def tests_menu(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(states.TestStates.disclaimer)
+    await callback.message.edit_caption(caption=texts.TESTS_DISCLAIMER, reply_markup=keyboards.tests_disclaimer_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "tests_consent", StateFilter(states.TestStates.disclaimer))
+async def tests_consent(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(states.TestStates.picking_test)
+    await callback.message.edit_caption(caption=texts.TESTS_INTRO, reply_markup=keyboards.tests_pick_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("test_pick:"), StateFilter(states.TestStates.picking_test))
+async def test_pick(callback: CallbackQuery, state: FSMContext) -> None:
+    test_id = callback.data.split(":", 1)[1]
+    if test_id not in tests_data.TESTS:
+        await callback.answer("Неизвестный тест", show_alert=True)
+        return
+    await state.update_data(test_id=test_id)
+    await state.set_state(states.TestStates.picking_length)
+    await callback.message.edit_caption(caption=f"Тест: {tests_data.TESTS[test_id]['title']}\nВыберите версию:", reply_markup=keyboards.tests_length_keyboard())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("test_len:"), StateFilter(states.TestStates.picking_length))
+async def test_len(callback: CallbackQuery, state: FSMContext) -> None:
+    version = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    test_id = data.get("test_id")
+    if not test_id or test_id not in tests_data.TESTS:
+        await callback.answer("Ошибка выбора теста", show_alert=True)
+        return
+    if version not in tests_data.TESTS[test_id]["versions"]:
+        await callback.answer("Неизвестная версия", show_alert=True)
+        return
+    await state.update_data(version=version, current_index=0, answers=[], last_question_message_id=None, test_started_at=datetime.now(timezone.utc))
+    await state.set_state(states.TestStates.in_test)
+    # Первый вопрос отправляем новым сообщением (не меняем медиа)
+    await _send_question(callback, state, first=True)
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("test_answer:"), StateFilter(states.TestStates.in_test))
+async def test_answer(callback: CallbackQuery, state: FSMContext, users_collection) -> None:
+    val = callback.data.split(":", 1)[1]
+    data = await state.get_data()
+    test_id: str = data.get("test_id")
+    version: str = data.get("version")
+    idx: int = data.get("current_index", 0)
+    answers: list = data.get("answers", [])
+    questions = tests_data.TESTS[test_id]["versions"][version]
+
+    answers.append(val)
+    idx += 1
+    await state.update_data(answers=answers, current_index=idx)
+
+    if idx >= len(questions):
+        result = tests_data.compute_result(test_id, version, answers)
+        record = {
+            "user_id": callback.from_user.id,
+            "type": "test_result",
+            "test_id": test_id,
+            "test_title": tests_data.TESTS[test_id]["title"],
+            "version": version,
+            "started_at": data.get("test_started_at"),
+            "finished_at": datetime.now(timezone.utc),
+            "answers": answers,
+            "result": result,
+        }
+        try:
+            await users_collection.insert_one(record)
+        except Exception as e:
+            logger.error(f"MongoDB error saving test result: {e}")
+
+        verdict_text = result.get("verdict", "Результаты обработаны.")
+        await callback.message.answer(
+            f"✅ Тест завершён!\n\n{verdict_text}",
+            reply_markup=keyboards.back_to_menu_keyboard
+        )
+        await state.clear()
+        await callback.answer()
+        return
+
+    await _send_question(callback, state)
+    await callback.answer()
+
+
+@router.callback_query(F.data == "end_test", StateFilter(states.TestStates.in_test))
+async def end_test(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    caption_text = texts.MAIN_MENU_CAPTION
+    try:
+        new_media = InputMediaPhoto(
+            media=photos.main_photo,
+            caption=caption_text
+        )
+        await callback.message.edit_media(media=new_media, reply_markup=keyboards.main_menu)
+    except TelegramBadRequest:
+        try:
+            await callback.message.edit_caption(caption=caption_text, reply_markup=keyboards.main_menu)
+        except TelegramBadRequest:
+            await callback.message.answer_photo(photo=photos.main_photo, caption=caption_text, reply_markup=keyboards.main_menu)
+    await callback.answer("Тест завершён. Данные не сохранены.")
 
 
 @router.callback_query(F.data == "onb_next_2", StateFilter(states.OnboardingStates.step2))
@@ -1172,7 +1330,7 @@ async def get_stats_handler(callback: CallbackQuery, users_collection, state: FS
     if total_scores == 0:
         final_caption = (
             "😔 Статистика недоступна\n\n"
-            "Вы еще не оценили свой прогресс ни разу. Начните с '📈 Шкала прогресса'!"
+            "Вы еще не оценили свой прогресс ни разу. Начните с '📈 Дневник эмоции'!"
         )
     else:
         latest_score = numeric_scores[0]

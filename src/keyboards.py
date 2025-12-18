@@ -14,6 +14,9 @@ main_menu = InlineKeyboardMarkup(
             InlineKeyboardButton(text='📊 Мой прогресс', callback_data='get_user_stats')
         ],
         [
+            InlineKeyboardButton(text='🧪 Тесты', callback_data='tests_menu')
+        ],
+        [
             InlineKeyboardButton(text='ℹ️ О нас', callback_data='about_us'),
             InlineKeyboardButton(text='📧 Тех. поддержка', callback_data='call_support')
         ]
@@ -71,6 +74,44 @@ back_to_menu_keyboard = InlineKeyboardMarkup(
             InlineKeyboardButton(text="⬅️ Вернуться в меню", callback_data="main_menu")
         ]
     ])
+
+
+def tests_disclaimer_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text='✅ Я ознакомлен', callback_data='tests_consent')],
+            [InlineKeyboardButton(text='⬅️ Вернуться в меню', callback_data='main_menu')]
+        ]
+    )
+
+
+def tests_pick_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text='MBTI — тип личности', callback_data='test_pick:mbti')],
+            [InlineKeyboardButton(text='Эмоциональное состояние', callback_data='test_pick:emotional')],
+            [InlineKeyboardButton(text='Тип привязанности', callback_data='test_pick:attachment')],
+            [InlineKeyboardButton(text='Язык любви', callback_data='test_pick:love')],
+            [InlineKeyboardButton(text='⬅️ Назад', callback_data='tests_menu')]
+        ]
+    )
+
+
+def tests_length_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text='Короткая версия', callback_data='test_len:short')],
+            [InlineKeyboardButton(text='Полная версия', callback_data='test_len:long')],
+            [InlineKeyboardButton(text='⬅️ Назад', callback_data='tests_menu')]
+        ]
+    )
+
+
+def question_keyboard(options: list[tuple[str, str]], *, show_end: bool = True) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=txt, callback_data=cb)] for txt, cb in options]
+    if show_end:
+        rows.append([InlineKeyboardButton(text='🛑 Закончить тест', callback_data='end_test')])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def portrait_pagination_keyboard(current_page: int, total_pages: int) -> InlineKeyboardMarkup:
