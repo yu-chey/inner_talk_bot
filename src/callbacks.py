@@ -134,7 +134,7 @@ def _likert_options() -> list[tuple[str, str]]:
 
 
 def _mbti_options() -> list[tuple[str, str]]:
-    return [("A", "test_answer:A"), ("B", "test_answer:B")]
+    return [("Да", "test_answer:A"), ("Нет", "test_answer:B")]
 
 
 async def _edit_prev_remove_end(bot, chat_id: int, message_id: int, q) -> None:
@@ -218,7 +218,6 @@ async def test_len(callback: CallbackQuery, state: FSMContext) -> None:
         return
     await state.update_data(version=version, current_index=0, answers=[], last_question_message_id=None, test_started_at=datetime.now(timezone.utc))
     await state.set_state(states.TestStates.in_test)
-    # Первый вопрос отправляем новым сообщением (не меняем медиа)
     await _send_question(callback, state, first=True)
     await callback.answer()
 
