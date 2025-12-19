@@ -10,7 +10,7 @@ def sanitize_portrait_text(text: str) -> str:
     s = text
     for m in ("**", "__", "*", "_", "`"):
         s = s.replace(m, "")
-    s = "\n".join(line.lstrip("
+    s = "\n".join(line.lstrip("- ") for line in s.splitlines())
     s = s.replace("•", "- ").replace("–", "-")
     lowers = ["example text", "template", "placeholder", "пример текста", "пример", "заглушка"]
     for token in lowers:
