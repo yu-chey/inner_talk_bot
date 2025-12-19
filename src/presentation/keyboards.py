@@ -100,15 +100,21 @@ def tests_length_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text='Короткая версия', callback_data='test_len:short')],
             [InlineKeyboardButton(text='Полная версия', callback_data='test_len:long')],
-            [InlineKeyboardButton(text='⬅️ Назад', callback_data='tests_menu')]
+            [InlineKeyboardButton(text='⬅️ Назад', callback_data='tests_pick_back')]
         ]
     )
 
 
-def question_keyboard(options: list[tuple[str, str]], *, show_end: bool = True) -> InlineKeyboardMarkup:
+def question_keyboard(options: list[tuple[str, str]], *, show_end: bool = True, show_back: bool = False) -> InlineKeyboardMarkup:
     rows = [[InlineKeyboardButton(text=txt, callback_data=cb)] for txt, cb in options]
     if show_end:
         rows.append([InlineKeyboardButton(text='🛑 Закончить тест', callback_data='end_test')])
+    nav_row = []
+    if show_back:
+        nav_row.append(InlineKeyboardButton(text='⬅️ Назад', callback_data='test_prev_question'))
+    nav_row.append(InlineKeyboardButton(text='🏠 В меню', callback_data='main_menu'))
+    if nav_row:
+        rows.append(nav_row)
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
