@@ -14,10 +14,10 @@ class HealthChecker:
         self.openai_circuit = openai_circuit
     
     async def check_database(self) -> Dict[str, Any]:
-        if not self.database:
+        if self.database is None:
             return {"status": "unknown", "error": "Database not initialized"}
         
-        if not self.database.db:
+        if self.database.db is None:
             return {"status": "unknown", "error": "Database not connected"}
         
         try:
@@ -35,7 +35,7 @@ class HealthChecker:
             }
     
     def check_circuit_breaker(self, circuit, name: str) -> Dict[str, Any]:
-        if not circuit:
+        if circuit is None:
             return {"status": "unknown", "error": f"{name} circuit breaker not initialized"}
         
         try:

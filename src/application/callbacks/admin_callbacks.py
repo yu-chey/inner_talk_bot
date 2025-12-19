@@ -15,7 +15,7 @@ router = Router()
 
 async def get_average_messages_per_user(users_collection, cache=None):
     cache_key = "avg_messages_per_user"
-    if cache:
+    if cache is not None:
         cached = await cache.get(cache_key)
         if cached:
             return cached
@@ -49,7 +49,7 @@ async def get_average_messages_per_user(users_collection, cache=None):
         "unique_users": unique_users
     }
     
-    if cache:
+    if cache is not None:
         await cache.set(cache_key, result, ttl=300)
     
     return result
@@ -57,7 +57,7 @@ async def get_average_messages_per_user(users_collection, cache=None):
 
 async def _admin_metrics(users_collection, cache=None):
     cache_key = "admin_metrics"
-    if cache:
+    if cache is not None:
         cached = await cache.get(cache_key)
         if cached:
             return cached
@@ -134,7 +134,7 @@ async def _admin_metrics(users_collection, cache=None):
         "onboarding_conv": onboarding_conv,
     }
     
-    if cache:
+    if cache is not None:
         await cache.set(cache_key, result, ttl=120)
     
     return result

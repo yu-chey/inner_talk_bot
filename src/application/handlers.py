@@ -564,7 +564,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
     gemini_circuit = getattr(bot, '_gemini_circuit', None) if hasattr(bot, '_gemini_circuit') else None
     gemini_available = True
     
-    if gemini_circuit:
+    if gemini_circuit is not None:
         try:
             from src.infrastructure.circuit_breaker import CircuitState
             circuit_state = gemini_circuit.get_state()
@@ -662,7 +662,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
 
     current_time = datetime.now(timezone.utc)
 
-    if users_collection:
+    if users_collection is not None:
         try:
             asyncio.create_task(_save_to_db_async(users_collection, {
                 "user_id": user_id,

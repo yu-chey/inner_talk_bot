@@ -90,7 +90,7 @@ async def generate_content_async_with_retry(client,
                                             retries: int = 3,
                                             backoff_base: float = 1.0,
                                             circuit_breaker=None):
-    if circuit_breaker:
+    if circuit_breaker is not None:
         try:
             return await circuit_breaker.call(
                 _generate_with_retry_internal,
@@ -146,7 +146,7 @@ async def count_tokens_async_with_retry(client,
                                         retries: int = 3,
                                         backoff_base: float = 1.0,
                                         circuit_breaker=None):
-    if circuit_breaker:
+    if circuit_breaker is not None:
         try:
             return await circuit_breaker.call(
                 _count_tokens_internal,
@@ -398,19 +398,19 @@ async def main():
     finally:
         logger.info("Shutting down...")
         try:
-            if database:
+            if database is not None:
                 await database.close()
         except Exception as e:
             logger.error(f"Error closing database: {e}")
         
         try:
-            if bot:
+            if bot is not None:
                 await bot.session.close()
         except Exception as e:
             logger.error(f"Error closing bot session: {e}")
         
         try:
-            if cache:
+            if cache is not None:
                 await cache.clear()
         except Exception as e:
             logger.error(f"Error clearing cache: {e}")

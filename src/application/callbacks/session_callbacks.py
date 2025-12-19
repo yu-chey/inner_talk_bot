@@ -24,7 +24,7 @@ async def _save_session_summary_async(collection, session_record):
 
 async def _load_session_history(user_id, users_collection, state: FSMContext, cache=None):
     cache_key = f"session_history:{user_id}"
-    if cache:
+    if cache is not None:
         cached = await cache.get(cache_key)
         if cached:
             await state.update_data(current_dialog=cached)
@@ -44,7 +44,7 @@ async def _load_session_history(user_id, users_collection, state: FSMContext, ca
                     "content": f"ПРЕДЫДУЩИЙ КОНСПЕКТ СЕССИИ: {last_summary}. Учти его в текущем диалоге."
                 })
         
-        if cache:
+        if cache is not None:
             await cache.set(cache_key, initial_history, ttl=600)
         
         await state.update_data(current_dialog=initial_history)
