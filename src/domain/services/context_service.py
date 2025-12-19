@@ -85,9 +85,10 @@ class ContextService:
         parts = [self._format_time_of_day_only()]
         
         if tests:
-            parts.append("\n📊 Результаты последних тестов пользователя:")
+            parts.append("\n📊 Результаты последних тестов пользователя (это психологические тесты, которые пользователь проходил ранее):")
             for test in tests[:3]:
                 parts.append(self._format_test_result(test))
+            parts.append("Используй эти результаты для понимания текущего состояния пользователя и его психологических особенностей.")
         
         if scores:
             parts.append("\n📈 Последние оценки прогресса (дневник эмоций):")
@@ -113,25 +114,60 @@ class ContextService:
         result = test.get("result", {})
         test_id = test.get("test_id", "")
         test_title = test.get("test_title", "Неизвестный тест")
+        finished_at = test.get("finished_at")
+        
+        date_str = ""
+        if finished_at:
+            if isinstance(finished_at, datetime):
+                date_str = finished_at.strftime("%d.%m.%Y")
+            else:
+                try:
+                    date_str = datetime.fromisoformat(str(finished_at)).strftime("%d.%m.%Y")
+                except:
+                    pass
+        
+        date_prefix = f"[{date_str}] " if date_str else ""
         
         if result.get("type") == "mbti":
             code = result.get("code", "")
-            return f"- {test_title}: тип {code}"
+            description = result.get("description", "")
+            if description:
+                short_desc = description[:200] + "..." if len(description) > 200 else description
+                return f"- {date_prefix}{test_title}: тип личности {code}. {short_desc}"
+            return f"- {date_prefix}{test_title}: тип личности {code}"
         elif "emotional" in test_id:
             averages = result.get("averages", {})
             if averages:
                 stress = averages.get("stress", 0)
                 anxiety = averages.get("anxiety", 0)
                 burnout = averages.get("burnout", 0)
+                interpretation = []
+                if stress >= 4.0:
+                    interpretation.append("высокий уровень стресса")
+                elif stress >= 3.0:
+                    interpretation.append("умеренный стресс")
+                if anxiety >= 4.0:
+                    interpretation.append("высокая тревожность")
+                elif anxiety >= 3.0:
+                    interpretation.append("умеренная тревожность")
+                if burnout >= 4.0:
+                    interpretation.append("высокий риск выгорания")
+                elif burnout >= 3.0:
+                    interpretation.append("признаки выгорания")
+                
+                interp_text = f" ({', '.join(interpretation)})" if interpretation else ""
                 return (
-                    f"- {test_title}: "
+                    f"- {date_prefix}{test_title}: "
                     f"стресс {stress:.1f}/5, тревожность {anxiety:.1f}/5, "
-                    f"выгорание {burnout:.1f}/5"
+                    f"выгорание {burnout:.1f}/5{interp_text}"
                 )
         
         verdict = result.get("verdict", "")
-        short_verdict = verdict[:100] + "..." if len(verdict) > 100 else verdict
-        return f"- {test_title}: {short_verdict}"
+        if verdict:
+            short_verdict = verdict[:250] + "..." if len(verdict) > 250 else verdict
+            return f"- {date_prefix}{test_title}: {short_verdict}"
+        
+        return f"- {date_prefix}{test_title}: пройден"
     
     def _calculate_trend(self, score_values: List[int]) -> str:
         latest = score_values[0]

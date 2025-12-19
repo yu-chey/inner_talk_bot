@@ -34,7 +34,7 @@ MBTI_SHORT: List[Question] = [
     Question("Принимая решения, я больше опираюсь на логику, чем на чувства.", "mbti_ab", mbti_dim="TF", a_is="T", b_is="F"),
     Question("Мне важнее гармония отношений, чем строгость аргументов.", "mbti_ab", mbti_dim="TF", a_is="F", b_is="T"),
     Question("Я критикую идею, даже если это может ранить чувства.", "mbti_ab", mbti_dim="TF", a_is="T", b_is="F"),
-    Question("Я стараюсь поддержать, даже если решение несовершенно логично.", "mbti_ab", mbti_dim="TF", a_is="F", b_is="T"),
+    Question("Я стараюсь поддержать, даже если решение совершенно нелогично.", "mbti_ab", mbti_dim="TF", a_is="F", b_is="T"),
     Question("Правда важнее, чем вежливость.", "mbti_ab", mbti_dim="TF", a_is="T", b_is="F"),
     Question("Сочувствие важнее, чем объективная правота.", "mbti_ab", mbti_dim="TF", a_is="F", b_is="T"),
     Question("Я предпочитаю план и порядок спонтанности.", "mbti_ab", mbti_dim="JP", a_is="J", b_is="P"),

@@ -106,9 +106,27 @@ async def _load_user_context(users_collection, user_id: int) -> str:
             result = doc.get("result", {})
             verdict = result.get("verdict", "")
             
+            finished_at = doc.get("finished_at")
+            date_str = ""
+            if finished_at:
+                if isinstance(finished_at, datetime):
+                    date_str = finished_at.strftime("%d.%m.%Y")
+                else:
+                    try:
+                        date_str = datetime.fromisoformat(str(finished_at)).strftime("%d.%m.%Y")
+                    except:
+                        pass
+            
+            date_prefix = f"[{date_str}] " if date_str else ""
+            
             if result.get("type") == "mbti":
                 code = result.get("code", "")
-                test_results.append(f"- {test_title}: тип {code}")
+                description = result.get("description", "")
+                if description:
+                    short_desc = description[:200] + "..." if len(description) > 200 else description
+                    test_results.append(f"- {date_prefix}{test_title}: тип личности {code}. {short_desc}")
+                else:
+                    test_results.append(f"- {date_prefix}{test_title}: тип личности {code}")
             elif result.get("type") == "likert_multi":
                 if "emotional" in test_id:
                     averages = result.get("averages", {})
@@ -116,23 +134,43 @@ async def _load_user_context(users_collection, user_id: int) -> str:
                         stress = averages.get("stress", 0)
                         anxiety = averages.get("anxiety", 0)
                         burnout = averages.get("burnout", 0)
-                        test_results.append(f"- {test_title}: стресс {stress:.1f}/5, тревожность {anxiety:.1f}/5, выгорание {burnout:.1f}/5")
+                        interpretation = []
+                        if stress >= 4.0:
+                            interpretation.append("высокий уровень стресса")
+                        elif stress >= 3.0:
+                            interpretation.append("умеренный стресс")
+                        if anxiety >= 4.0:
+                            interpretation.append("высокая тревожность")
+                        elif anxiety >= 3.0:
+                            interpretation.append("умеренная тревожность")
+                        if burnout >= 4.0:
+                            interpretation.append("высокий риск выгорания")
+                        elif burnout >= 3.0:
+                            interpretation.append("признаки выгорания")
+                        
+                        interp_text = f" ({', '.join(interpretation)})" if interpretation else ""
+                        test_results.append(
+                            f"- {date_prefix}{test_title}: "
+                            f"стресс {stress:.1f}/5, тревожность {anxiety:.1f}/5, "
+                            f"выгорание {burnout:.1f}/5{interp_text}"
+                        )
                     else:
-                        short_verdict = verdict[:150] + "..." if len(verdict) > 150 else verdict
-                        test_results.append(f"- {test_title}: {short_verdict}")
+                        short_verdict = verdict[:200] + "..." if len(verdict) > 200 else verdict
+                        test_results.append(f"- {date_prefix}{test_title}: {short_verdict}")
                 elif "attachment" in test_id:
-                    short_verdict = verdict[:100] + "..." if len(verdict) > 100 else verdict
-                    test_results.append(f"- {test_title}: {short_verdict}")
+                    short_verdict = verdict[:200] + "..." if len(verdict) > 200 else verdict
+                    test_results.append(f"- {date_prefix}{test_title}: {short_verdict}")
                 elif "love" in test_id:
-                    short_verdict = verdict[:100] + "..." if len(verdict) > 100 else verdict
-                    test_results.append(f"- {test_title}: {short_verdict}")
+                    short_verdict = verdict[:200] + "..." if len(verdict) > 200 else verdict
+                    test_results.append(f"- {date_prefix}{test_title}: {short_verdict}")
                 else:
-                    short_verdict = verdict[:100] + "..." if len(verdict) > 100 else verdict
-                    test_results.append(f"- {test_title}: {short_verdict}")
+                    short_verdict = verdict[:200] + "..." if len(verdict) > 200 else verdict
+                    test_results.append(f"- {date_prefix}{test_title}: {short_verdict}")
         
         if test_results:
-            context_parts.append("\n📊 Результаты последних тестов пользователя:")
+            context_parts.append("\n📊 Результаты последних тестов пользователя (это психологические тесты, которые пользователь проходил ранее):")
             context_parts.extend(test_results[:3])
+            context_parts.append("Используй эти результаты для понимания текущего состояния пользователя и его психологических особенностей.")
     except Exception as e:
         logger.error(f"Ошибка загрузки результатов тестов: {e}")
     
@@ -378,10 +416,14 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
             f"\n\n### КОНТЕКСТ ПОЛЬЗОВАТЕЛЯ:\n{user_context}\n\n"
             "ВАЖНО: Используй эту информацию для более персонализированного ответа:\n"
             "- Если сейчас ночь, упомяни это естественно (например: 'Глубокая ночь, а мысли не отпускают?')\n"
-            "- Учитывай результаты тестов: если есть высокий уровень стресса/тревожности, будь более поддерживающим\n"
-            "- Обрати внимание на динамику оценок прогресса: если есть тенденция к улучшению, отметь это; если к снижению - прояви больше эмпатии\n"
+            "- РЕЗУЛЬТАТЫ ТЕСТОВ: Это психологические тесты, которые пользователь проходил ранее. "
+            "Если видишь высокий уровень стресса (≥4/5), тревожности (≥4/5) или выгорания (≥4/5) - будь более поддерживающим и эмпатичным. "
+            "Если видишь тип личности MBTI - учитывай особенности этого типа в общении. "
+            "Используй эту информацию естественно, не перечисляя явно, но учитывая в своих ответах.\n"
+            "- ОЦЕНКИ ПРОГРЕССА: Это дневник эмоций пользователя (шкала 1-10). "
+            "Если есть тенденция к улучшению - отметь это поддержкой; если к снижению - прояви больше эмпатии и предложи исследовать причины.\n"
             "- Не перечисляй все данные явно, но используй их для понимания состояния пользователя\n"
-            "- Если видишь противоречия (например, высокий стресс по тесту, но хорошие оценки прогресса), мягко исследуй это"
+            "- Если видишь противоречия (например, высокий стресс по тесту, но хорошие оценки прогресса), мягко исследуй это в диалоге"
         )
     
     base_prompt_with_style = f"{SYSTEM_PROMPT_TEXT}{context_section}\n\n{style_modifier}"
