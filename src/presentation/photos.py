@@ -5,3 +5,4 @@ support_photo = "AgACAgIAAxkBAAIKC2k_-y7EbMyvz4_iU0ch_bvj7wouAAIEDGsbws4BShi0_h9
 stats_photo = "AgACAgIAAxkBAAIKbWlB2pt8RA0kGzRbe_ePFsPJb3FGAAKwC2sb4pYQSkHISLiA-9pkAQADAgADdwADNgQ"
 progress_scale_photo = "AgACAgIAAxkBAAIKbmlB2rUbOW8kvicM1o_XuhPFc574AAKxC2sb4pYQSvE9E-vgMmSVAQADAgADdwADNgQ"
 active_session_photo = "AgACAgIAAxkBAAIKCGk_-xkI-jfKo8i4x4Yk-3PDKGT0AAIBDGsbws4BSiNlf0tKQTNRAQADAgADeQADNgQ"
+tests_photo = ""

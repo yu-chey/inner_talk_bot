@@ -79,7 +79,8 @@ async def _send_question(callback: CallbackQuery, state: FSMContext, *, first: b
 async def tests_menu(callback: CallbackQuery, state: FSMContext) -> None:
     await state.set_state(states.TestStates.disclaimer)
     new_media = InputMediaPhoto(
-        media=photos.main_photo,
+        media=photos.main_photo, # replace from main_photo to tests_photo when I get photo for tests
+        # media=photos.tests_photo,
         caption=texts.TESTS_DISCLAIMER
     )
     try:
