@@ -657,7 +657,9 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
                 raise
         except Exception as e:
             gemini_failed_exc = e
-            logger.error(f"Gemini API call error: {e}")
+            error_type = type(e).__name__
+            error_msg = str(e) if e else "No error message"
+            logger.error(f"Gemini API call error: {error_type}: {error_msg}", exc_info=True)
 
             if openai_client and generate_openai_func:
                 if _is_resource_exhausted(e):
