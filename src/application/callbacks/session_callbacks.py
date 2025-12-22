@@ -103,7 +103,7 @@ async def _save_summary_async(session_data, users_collection, generate_content_s
         try:
             summary_response = await generate_content_sync_func(
                 gemini_client,
-                'gemini-3-flash',
+                'gemini-3-flash-preview',
                 dialog_contents,
                 system_instruction
             )

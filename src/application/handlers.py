@@ -480,7 +480,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
                 token_task = asyncio.create_task(
                     count_tokens_sync_func(
                 gemini_client,
-                'gemini-3-flash',
+                'gemini-3-flash-preview',
                 new_contents_gemini,
             )
                 )
@@ -628,7 +628,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
             
             ai_response_obj = await generate_content_sync_func(
                 gemini_client,
-                'gemini-3-flash',
+                'gemini-3-flash-preview',
                 new_contents_gemini,
                 final_system_prompt
             )
