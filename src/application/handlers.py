@@ -746,7 +746,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         if len(dialog_messages_only) > max_msgs:
             dialog_messages_only = dialog_messages_only[-max_msgs:]
 
-            history_to_save = dialog_messages_only.copy() if dialog_messages_only else []
+        history_to_save = dialog_messages_only.copy() if dialog_messages_only else []
 
         if is_summary_present and summary_content_dict:
             history_to_save.insert(0, summary_content_dict)
