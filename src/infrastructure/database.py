@@ -1,6 +1,7 @@
 import motor.motor_asyncio
 from typing import Optional
 import logging
+import asyncio
 from .retry import retry_async
 
 logger = logging.getLogger(__name__)
@@ -14,21 +15,35 @@ class Database:
         self.client: Optional[motor.motor_asyncio.AsyncIOMotorClient] = None
         self.db: Optional[motor.motor_asyncio.AsyncIOMotorDatabase] = None
     
-    async def connect(self):
-        self.client = motor.motor_asyncio.AsyncIOMotorClient(
-            self.mongodb_uri,
-            maxPoolSize=50,
-            minPoolSize=10,
-            maxIdleTimeMS=45000,
-            retryWrites=True,
-            retryReads=True,
-            serverSelectionTimeoutMS=5000,
-            connectTimeoutMS=10000,
-            socketTimeoutMS=20000,
-            waitQueueTimeoutMS=10000
-        )
-        self.db = self.client[self.db_name]
-        logger.info("MongoDB connected with optimized connection pooling")
+    async def connect(self, max_retries: int = 5, retry_delay: float = 2.0):
+        for attempt in range(max_retries):
+            try:
+                self.client = motor.motor_asyncio.AsyncIOMotorClient(
+                    self.mongodb_uri,
+                    maxPoolSize=50,
+                    minPoolSize=5,
+                    maxIdleTimeMS=45000,
+                    retryWrites=True,
+                    retryReads=True,
+                    serverSelectionTimeoutMS=30000,
+                    connectTimeoutMS=30000,
+                    socketTimeoutMS=60000,
+                    waitQueueTimeoutMS=30000,
+                    heartbeatFrequencyMS=10000,
+                    serverSelectionRetryDelayMS=1000
+                )
+                self.db = self.client[self.db_name]
+                await self.client.admin.command('ping')
+                logger.info("MongoDB connected with optimized connection pooling")
+                return
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"MongoDB connection attempt {attempt + 1}/{max_retries} failed: {e}. Retrying in {retry_delay}s...")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay *= 1.5
+                else:
+                    logger.error(f"MongoDB connection failed after {max_retries} attempts: {e}")
+                    raise
     
     async def close(self):
         if self.client is not None:

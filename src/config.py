@@ -7,12 +7,25 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN") or sys.exit(1)
-GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or sys.exit(1)
+TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_BOT_TOKEN") or ""
+GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY") or ""
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 
-MONGODB_URI: str = os.getenv("MONGODB_URI") or sys.exit(1)
-DB_NAME: str = os.getenv("DB_NAME") or sys.exit(1)
+MONGODB_URI: str = os.getenv("MONGODB_URI") or ""
+DB_NAME: str = os.getenv("DB_NAME") or ""
+
+if not TELEGRAM_TOKEN:
+    print("ERROR: TELEGRAM_BOT_TOKEN environment variable is not set", file=sys.stderr)
+    sys.exit(1)
+if not GEMINI_API_KEY:
+    print("ERROR: GEMINI_API_KEY environment variable is not set", file=sys.stderr)
+    sys.exit(1)
+if not MONGODB_URI:
+    print("ERROR: MONGODB_URI environment variable is not set", file=sys.stderr)
+    sys.exit(1)
+if not DB_NAME:
+    print("ERROR: DB_NAME environment variable is not set", file=sys.stderr)
+    sys.exit(1)
 
 SYSTEM_PROMPT_TEXT: str = (
     
