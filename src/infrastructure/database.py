@@ -29,8 +29,7 @@ class Database:
                     connectTimeoutMS=30000,
                     socketTimeoutMS=60000,
                     waitQueueTimeoutMS=30000,
-                    heartbeatFrequencyMS=10000,
-                    serverSelectionRetryDelayMS=1000
+                    heartbeatFrequencyMS=10000
                 )
                 self.db = self.client[self.db_name]
                 await self.client.admin.command('ping')
