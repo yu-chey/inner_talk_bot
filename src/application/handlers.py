@@ -593,6 +593,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
                     return True
             except Exception as oe:
                 logger.warning(f"OpenAI fallback '{model}' failed: {oe}")
+                continue
         
         if alert_func:
             try:
@@ -617,9 +618,11 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
     if not gemini_available or (openai_client and generate_openai_func and _is_gemini_in_backoff()):
         if openai_client and generate_openai_func:
             reason = "Circuit Breaker открыт" if not gemini_available else f"активен backoff Gemini, повторная попытка через ~{max(1, int((_GEMINI_BACKOFF_UNTIL - time.time()) if _GEMINI_BACKOFF_UNTIL else 0))}с"
-            await _call_openai_fallback(reason=reason)
+            fallback_success = await _call_openai_fallback(reason=reason)
+            if not fallback_success:
+                ai_response = "Извините, сервис временно недоступен. Попробуйте позже."
     else:
-            gemini_available = True
+        gemini_available = True
     
     if gemini_available:
         try:
@@ -645,7 +648,9 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
             if "circuit breaker open" in str(e).lower() or "temporarily unavailable" in str(e).lower():
                 logger.warning(f"Gemini Circuit Breaker открыт, переключаемся на OpenAI")
                 if openai_client and generate_openai_func:
-                    await _call_openai_fallback(reason="Circuit Breaker открыт")
+                    fallback_success = await _call_openai_fallback(reason="Circuit Breaker открыт")
+                    if not fallback_success:
+                        ai_response = "Извините, сервис временно недоступен. Попробуйте позже."
                 else:
                     ai_response = "Извините, сервис временно недоступен. Попробуйте позже."
             else:
@@ -654,9 +659,19 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
             gemini_failed_exc = e
             logger.error(f"Gemini API call error: {e}")
 
-            if openai_client and generate_openai_func and _is_resource_exhausted(e):
-                _set_gemini_backoff()
-                await _call_openai_fallback(reason="Gemini недоступен или исчерпан ресурс")
+            if openai_client and generate_openai_func:
+                if _is_resource_exhausted(e):
+                    _set_gemini_backoff()
+                    reason = "Gemini недоступен или исчерпан ресурс"
+                else:
+                    reason = f"Gemini ошибка: {type(e).__name__}"
+                
+                fallback_success = await _call_openai_fallback(reason=reason)
+                if not fallback_success:
+                    if _is_resource_exhausted(e):
+                        ai_response = "Извините, модель поставщика на данный момент перегружена. Попробуйте повторить последнее сообщение! Если ошибка повторяется, завершите сессию."
+                    else:
+                        ai_response = "Извините, произошла ошибка при обращении к сервису. Попробуйте позже."
 
     if stop_event:
         stop_event.set()
