@@ -295,7 +295,7 @@ async def main():
     openai_circuit = CircuitBreaker(failure_threshold=5, timeout=60.0)
     
     try:
-        gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
+    gemini_client = genai.Client(api_key=config.GEMINI_API_KEY)
         logger.info("Gemini client initialized successfully")
     except Exception as e:
         logger.critical(f"Failed to initialize Gemini client: {e}")
@@ -318,7 +318,7 @@ async def main():
         users_collection = database.get_collection(config.USERS_COLLECTION)
         asyncio.create_task(database.ensure_indexes(config.USERS_COLLECTION))
         logger.info("Database initialized successfully")
-    except Exception as e:
+        except Exception as e:
         logger.critical(f"Failed to initialize database: {e}")
         logger.critical("Bot cannot start without database. Exiting...")
         sys.exit(1)
@@ -367,7 +367,7 @@ async def main():
     except Exception as e:
         logger.warning(f"Failed to initialize health checker: {e}")
         health_checker = None
-    
+
     dp.workflow_data.update({
         "gemini_client": gemini_client,
         "gemini_circuit": gemini_circuit,
@@ -405,7 +405,7 @@ async def main():
         
         try:
             if bot is not None:
-                await bot.session.close()
+        await bot.session.close()
         except Exception as e:
             logger.error(f"Error closing bot session: {e}")
         

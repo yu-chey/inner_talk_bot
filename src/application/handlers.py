@@ -49,20 +49,20 @@ async def _save_user_profile_async(collection, user_id, username, first_name, us
         if user_service:
             await user_service.save_user_profile_async(user_id, username, first_name)
         else:
-            await collection.update_one(
-                {"user_id": user_id, "type": "user_profile"},
-                {
-                    "$set": {
-                        "username": username,
-                        "first_name": first_name,
-                        "last_active": datetime.now(timezone.utc)
-                    },
-                    "$setOnInsert": {
-                        "created_at": datetime.now(timezone.utc)
-                    }
+        await collection.update_one(
+            {"user_id": user_id, "type": "user_profile"},
+            {
+                "$set": {
+                    "username": username,
+                    "first_name": first_name,
+                    "last_active": datetime.now(timezone.utc)
                 },
-                upsert=True
-            )
+                "$setOnInsert": {
+                    "created_at": datetime.now(timezone.utc)
+                }
+            },
+            upsert=True
+        )
     except Exception as e:
         logger.error(f"Ошибка сохранения/обновления профиля пользователя: {e}")
 
@@ -346,7 +346,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
 
     if not user_text or not user_text.strip():
         try:
-            await message.answer("Пожалуйста, отправьте текстовое сообщение.")
+        await message.answer("Пожалуйста, отправьте текстовое сообщение.")
         except Exception as e:
             logger.error(f"Error sending message to user {user_id}: {e}")
         return
@@ -454,8 +454,8 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
                 )
     except Exception as e:
         logger.error(f"Error creating Gemini contents: {e}")
-        new_contents_gemini = [
-            types.Content(
+    new_contents_gemini = [
+        types.Content(
                 role="user",
                 parts=[types.Part(text=user_text)]
             )
@@ -468,21 +468,21 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
                 role="user",
                 parts=[types.Part(text=user_text)]
             )
-        ]
+    ]
 
     total_token_count = 0
     token_task = None
-    
+
     if not gemini_client or not count_tokens_sync_func:
         logger.warning("Gemini client or count_tokens function not available, skipping token count")
     else:
-        try:
+    try:
             token_task = asyncio.create_task(
                 count_tokens_sync_func(
-                    gemini_client,
-                    'gemini-2.5-flash',
-                    new_contents_gemini,
-                )
+            gemini_client,
+            'gemini-3-flash',
+            new_contents_gemini,
+        )
             )
         except Exception as e:
             logger.error(f"Error starting token count: {e}")
@@ -491,9 +491,9 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
             try:
                 token_response = await token_task
                 if token_response and hasattr(token_response, 'total_tokens'):
-                    total_token_count = token_response.total_tokens
-            except Exception as e:
-                logger.error(f"Error counting tokens: {e}")
+        total_token_count = token_response.total_tokens
+    except Exception as e:
+        logger.error(f"Error counting tokens: {e}")
 
     if total_token_count >= config.MAX_TOKENS_PER_SESSION:
         await message.answer(
@@ -510,23 +510,23 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         return
 
     try:
-        thinking_message = await message.answer("...")
+    thinking_message = await message.answer("...")
     except Exception as e:
         logger.error(f"Error sending thinking message to user {user_id}: {e}")
         thinking_message = message
         stop_event = None
         animation_task = None
     else:
-        stop_event = asyncio.Event()
+    stop_event = asyncio.Event()
         try:
-            animation_task = asyncio.create_task(
-                update_thinking_message(
-                    bot,
-                    chat_id,
-                    thinking_message.message_id,
-                    stop_event
-                )
-            )
+    animation_task = asyncio.create_task(
+        update_thinking_message(
+            bot,
+            chat_id,
+            thinking_message.message_id,
+            stop_event
+        )
+    )
         except Exception as e:
             logger.error(f"Error starting animation task: {e}")
             animation_task = None
@@ -620,7 +620,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         if openai_client and generate_openai_func:
             reason = "Circuit Breaker открыт" if not gemini_available else f"активен backoff Gemini, повторная попытка через ~{max(1, int((_GEMINI_BACKOFF_UNTIL - time.time()) if _GEMINI_BACKOFF_UNTIL else 0))}с"
             await _call_openai_fallback(reason=reason)
-        else:
+    else:
             gemini_available = True
     
     if gemini_available:
@@ -630,7 +630,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
             
             ai_response_obj = await generate_content_sync_func(
                 gemini_client,
-                'gemini-2.5-flash',
+                'gemini-3-flash',
                 new_contents_gemini,
                 final_system_prompt
             )
@@ -661,13 +661,13 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
                 await _call_openai_fallback(reason="Gemini недоступен или исчерпан ресурс")
 
     if stop_event:
-        stop_event.set()
+    stop_event.set()
 
     if animation_task:
-        try:
-            await animation_task
-        except asyncio.CancelledError:
-            pass
+    try:
+        await animation_task
+    except asyncio.CancelledError:
+        pass
         except Exception as e:
             logger.error(f"Error in animation task: {e}")
 
@@ -678,10 +678,10 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
 
     try:
         if thinking_message and thinking_message != message:
-            await thinking_message.edit_text(
-                text=ai_response,
-                reply_markup=keyboards.end_session_menu
-            )
+        await thinking_message.edit_text(
+            text=ai_response,
+            reply_markup=keyboards.end_session_menu
+        )
         else:
             final_message = await message.answer(
                 ai_response,
@@ -690,10 +690,10 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
     except TelegramBadRequest as e:
         logger.warning(f"Failed to edit thinking message: {e}")
         try:
-            final_message = await message.answer(
-                ai_response,
-                reply_markup=keyboards.end_session_menu
-            )
+        final_message = await message.answer(
+            ai_response,
+            reply_markup=keyboards.end_session_menu
+        )
         except Exception as e2:
             logger.error(f"Failed to send message to user {user_id}: {e2}")
             try:
@@ -706,46 +706,46 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
 
     if users_collection is not None:
         try:
-            asyncio.create_task(_save_to_db_async(users_collection, {
-                "user_id": user_id,
-                "type": "user_message",
-                "text": user_text,
-                "timestamp": current_time,
-                "username": username,
-            }))
+    asyncio.create_task(_save_to_db_async(users_collection, {
+        "user_id": user_id,
+        "type": "user_message",
+        "text": user_text,
+        "timestamp": current_time,
+        "username": username,
+    }))
         except Exception as e:
             logger.error(f"Error scheduling user message save: {e}")
-        
+
         try:
-            asyncio.create_task(_save_to_db_async(users_collection, {
-                "user_id": user_id,
-                "type": "model_response",
-                "text": ai_response,
-                "timestamp": current_time,
-            }))
+    asyncio.create_task(_save_to_db_async(users_collection, {
+        "user_id": user_id,
+        "type": "model_response",
+        "text": ai_response,
+        "timestamp": current_time,
+    }))
         except Exception as e:
             logger.error(f"Error scheduling AI response save: {e}")
 
     try:
         if ai_response:
-            dialog_messages_only.append({"role": "model", "content": ai_response})
-        if len(dialog_messages_only) > max_msgs:
-            dialog_messages_only = dialog_messages_only[-max_msgs:]
+    dialog_messages_only.append({"role": "model", "content": ai_response})
+    if len(dialog_messages_only) > max_msgs:
+        dialog_messages_only = dialog_messages_only[-max_msgs:]
 
         history_to_save = dialog_messages_only.copy() if dialog_messages_only else []
 
-        if is_summary_present and summary_content_dict:
-            history_to_save.insert(0, summary_content_dict)
-            logger.info("Конспект возвращен в историю для FSMContext (индекс 0).")
+    if is_summary_present and summary_content_dict:
+        history_to_save.insert(0, summary_content_dict)
+        logger.info("Конспект возвращен в историю для FSMContext (индекс 0).")
 
-        real_user_message_count = current_data.get("real_user_message_count", 0) + 1
+    real_user_message_count = current_data.get("real_user_message_count", 0) + 1
 
         message_id = final_message.message_id if final_message and hasattr(final_message, 'message_id') else None
-        await state.update_data(
-            current_dialog=history_to_save,
+    await state.update_data(
+        current_dialog=history_to_save,
             last_ai_message_id=message_id,
-            real_user_message_count=real_user_message_count
-        )
+        real_user_message_count=real_user_message_count
+    )
     except Exception as e:
         logger.error(f"Error updating state: {e}")
 

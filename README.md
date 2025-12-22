@@ -87,46 +87,46 @@ src/
 ### Установка
 
 1. **Клонируйте репозиторий:**
-   ```bash
+    ```bash
    git clone <repository-url>
-   cd inner_talk_bot
-   ```
+    cd inner_talk_bot
+    ```
 
 2. **Создайте виртуальное окружение:**
-   ```bash
-   python -m venv .venv
-   
+    ```bash
+    python -m venv .venv
+
    # Linux/macOS
-   source .venv/bin/activate
-   
+    source .venv/bin/activate
+
    # Windows
-   .venv\Scripts\activate
-   ```
+    .venv\Scripts\activate
+    ```
 
 3. **Установите зависимости:**
-   ```bash
+    ```bash
    pip install -r requirements.txt
-   ```
+    ```
 
 4. **Настройте переменные окружения:**
-   
+
    Создайте файл `.env` в корне проекта:
-   ```env
+```env
    # Telegram
    TELEGRAM_BOT_TOKEN=your_telegram_bot_token
    
    # AI APIs
    GEMINI_API_KEY=your_gemini_api_key
    OPENAI_API_KEY=your_openai_api_key  # Опционально
-   
+
    # MongoDB
    MONGODB_URI=mongodb+srv://user:password@cluster.mongodb.net/dbname
    DB_NAME=innertalkCluster
-   
+
    # Настройки
-   MAX_SESSIONS_PER_DAY=3
+MAX_SESSIONS_PER_DAY=3
    MAX_TOKENS_PER_SESSION=10000
-   PORTRAIT_COOLDOWN_HOURS=24
+PORTRAIT_COOLDOWN_HOURS=24
    ```
 
 5. **Запустите бота:**
