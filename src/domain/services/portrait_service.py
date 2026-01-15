@@ -33,6 +33,7 @@ class PortraitService:
         
         if not last_portrait_timestamp:
             return {"on_cooldown": False, "portrait": None, "time_left": None}
+
         
         cooldown_end_time = last_portrait_timestamp + timedelta(hours=config.PORTRAIT_COOLDOWN_HOURS)
         

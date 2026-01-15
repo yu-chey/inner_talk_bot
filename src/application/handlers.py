@@ -479,10 +479,10 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         try:
                 token_task = asyncio.create_task(
                     count_tokens_sync_func(
-                gemini_client,
+            gemini_client,
                 'gemini-3-flash-preview',
-                new_contents_gemini,
-            )
+            new_contents_gemini,
+        )
                 )
         except Exception as e:
             logger.error(f"Error starting token count: {e}")
@@ -520,7 +520,7 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         stop_event = asyncio.Event()
         try:
             animation_task = asyncio.create_task(
-            update_thinking_message(
+                update_thinking_message(
                 bot,
                 chat_id,
                 thinking_message.message_id,
@@ -748,20 +748,20 @@ async def echo_handler(message: Message, state: FSMContext, generate_content_syn
         if len(dialog_messages_only) > max_msgs:
             dialog_messages_only = dialog_messages_only[-max_msgs:]
 
-        history_to_save = dialog_messages_only.copy() if dialog_messages_only else []
+            history_to_save = dialog_messages_only.copy() if dialog_messages_only else []
 
         if is_summary_present and summary_content_dict:
             history_to_save.insert(0, summary_content_dict)
             logger.info("Конспект возвращен в историю для FSMContext (индекс 0).")
 
-        real_user_message_count = current_data.get("real_user_message_count", 0) + 1
+            real_user_message_count = current_data.get("real_user_message_count", 0) + 1
 
-        message_id = final_message.message_id if final_message and hasattr(final_message, 'message_id') else None
-        await state.update_data(
-            current_dialog=history_to_save,
-                last_ai_message_id=message_id,
-            real_user_message_count=real_user_message_count
-        )
+            message_id = final_message.message_id if final_message and hasattr(final_message, 'message_id') else None
+            await state.update_data(
+                current_dialog=history_to_save,
+                        last_ai_message_id=message_id,
+                real_user_message_count=real_user_message_count
+            )
     except Exception as e:
         logger.error(f"Error updating state: {e}")
 
